@@ -122,6 +122,7 @@ try
     _start = a._start;
     _end = a._end;
     _pData = a._pData;
+    _blockRange = a._blockRange;
     _wordDelimiters = a._wordDelimiters;
     _blockRange = a._blockRange;
 
@@ -1013,11 +1014,22 @@ try
         _pData->UnlockConsole();
     });
 
+    // We can abstract this movement by moving _start
+    // GH#7342: check if we're past the documentEnd
+    // If so, clamp us to be a degenerate range off the end of the document.
+    constexpr auto endpoint = TextPatternRangeEndpoint::TextPatternRangeEndpoint_Start;
+    const auto bufferSize{ _pData->GetTextBuffer().GetSize() };
+    COORD documentEnd = _getDocumentEnd();
+    if (bufferSize.CompareInBounds(GetEndpoint(endpoint), documentEnd, true) > 0)
+    {
+        bufferSize.IncrementInBounds(documentEnd, true);
+        _end = documentEnd;
+        _start = documentEnd;
+    }
+
     const auto wasDegenerate = IsDegenerate();
     if (count != 0)
     {
-        // We can abstract this movement by moving _start
-        constexpr auto endpoint = TextPatternRangeEndpoint::TextPatternRangeEndpoint_Start;
         const auto preventBoundary = !wasDegenerate;
         if (unit == TextUnit::TextUnit_Character)
         {
@@ -1319,7 +1331,9 @@ const til::point UiaTextRangeBase::_getDocumentEnd() const noexcept
 {
     const auto optBufferSize{ _getBufferSize() };
     const auto& buffer{ _pData->GetTextBuffer() };
-    return buffer.GetLastNonSpaceCharacter(optBufferSize);
+    const auto lastCharPos{ buffer.GetLastNonSpaceCharacter(optBufferSize) };
+    const auto cursorPos{ buffer.GetCursor().GetPosition() };
+    return { optBufferSize.RightInclusive(), std::max(lastCharPos.Y, cursorPos.Y) };
 }
 
 // Routine Description:

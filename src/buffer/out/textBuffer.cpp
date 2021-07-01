@@ -1452,38 +1452,55 @@ const til::point TextBuffer::GetGlyphEnd(const til::point pos, std::optional<til
 // - Update pos to be the beginning of the next glyph/character. This is used for accessibility
 // Arguments:
 // - pos - a COORD on the word you are currently on
-// - allowBottomExclusive - allow the nonexistent end-of-buffer cell to be encountered
+// - allowExclusiveEnd - allow result to be the exclusive limit (one past limit)
 // - limit - boundaries for the iterator to operate within
 // Return Value:
 // - true, if successfully updated pos. False, if we are unable to move (usually due to a buffer boundary)
 // - pos - The COORD for the first cell of the current glyph (inclusive)
-bool TextBuffer::MoveToNextGlyph(til::point& pos, bool allowBottomExclusive, std::optional<til::point> limitOptional) const
+bool TextBuffer::MoveToNextGlyph(til::point& pos, bool allowExclusiveEnd, std::optional<til::point> limitOptional) const
 {
-    COORD resultPos = pos;
     const auto bufferSize = GetSize();
     const auto limit{ limitOptional ? *limitOptional : bufferSize.EndInclusive() };
 
-    if (bufferSize.CompareInBounds(pos, limit, allowBottomExclusive) >= 0)
+    // Corner Case: we're on the limit
+    if (pos == limit)
     {
-        // we're already at/past the end
-        // clamp us to the limit
-        resultPos = limit;
-        if (allowBottomExclusive)
+        // Check if we allow the exclusive end.
+        // If so, move onto the exclusive end.
+        // Otherwise, we cannot move.
+        if (allowExclusiveEnd)
         {
-            bufferSize.IncrementInBounds(resultPos, allowBottomExclusive);
+            COORD result = pos;
+            bufferSize.IncrementInBounds(result, true);
+            pos = result;
+            return true;
         }
-        pos = resultPos;
+        return false;
+    }
+    else if (bufferSize.CompareInBounds(pos, limit, true) > 0)
+    {
+        // Corner Case: we're past the limit
+        // Clamp us to the limit (or one past it if we allow exclusivity)
+        COORD result = limit;
+        if (allowExclusiveEnd)
+        {
+            bufferSize.IncrementInBounds(result, true);
+        }
+        pos = result;
         return false;
     }
 
-    // try to move. If we can't, we're done.
-    const bool success = bufferSize.IncrementInBounds(resultPos, allowBottomExclusive);
-    if (resultPos != bufferSize.EndExclusive() && GetCellDataAt(resultPos)->DbcsAttr().IsTrailing())
+    // Try to move forward, but if we hit the buffer boundary, we fail to move.
+    auto iter{ GetCellDataAt(pos, bufferSize) };
+    const bool success{ ++iter };
+
+    // Move again if we're on a wide glyph
+    if (success && iter->DbcsAttr().IsTrailing())
     {
-        bufferSize.IncrementInBounds(resultPos, allowBottomExclusive);
+        ++iter;
     }
 
-    pos = resultPos;
+    pos = iter.Pos();
     return success;
 }
 
