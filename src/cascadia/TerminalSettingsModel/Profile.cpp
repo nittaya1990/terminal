@@ -22,6 +22,8 @@ using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::Foundation;
 using namespace ::Microsoft::Console;
 
+static constexpr std::string_view UpdatesKey{ "updates" };
+
 static constexpr std::string_view NameKey{ "name" };
 static constexpr std::string_view GuidKey{ "guid" };
 static constexpr std::string_view SourceKey{ "source" };
@@ -85,6 +87,7 @@ winrt::com_ptr<Profile> Profile::CopySettings(winrt::com_ptr<Profile> source)
     auto profile{ winrt::make_self<Profile>() };
 
     profile->_Deleted = source->_Deleted;
+    profile->_Updates = source->_Updates;
     profile->_Guid = source->_Guid;
     profile->_Name = source->_Name;
     profile->_Source = source->_Source;
@@ -267,7 +270,7 @@ bool Profile::ShouldBeLayered(const Json::Value& json) const
     // First, check that GUIDs match. This is easy. If they don't match, they
     // should _definitely_ not layer.
     const auto otherGuid{ JsonUtils::GetValueForKey<std::optional<winrt::guid>>(json, GuidKey) };
-    const auto otherSource{ JsonUtils::GetValueForKey<std::optional<winrt::hstring>>(json, SourceKey) };
+    const auto otherSource{ JsonUtils::GetValueForKey<std::optional<std::wstring>>(json, SourceKey) };
     if (otherGuid)
     {
         if (otherGuid.value() != Guid())
@@ -279,7 +282,7 @@ bool Profile::ShouldBeLayered(const Json::Value& json) const
     {
         // If the other json object didn't have a GUID,
         // check if we auto-generate the same guid using the name and source.
-        const auto otherName{ JsonUtils::GetValueForKey<std::optional<winrt::hstring>>(json, NameKey) };
+        const auto otherName{ JsonUtils::GetValueForKey<std::optional<std::wstring>>(json, NameKey) };
         if (Guid() != _GenerateGuidForProfile(otherName ? *otherName : L"Default", otherSource ? *otherSource : L""))
         {
             return false;
@@ -343,6 +346,7 @@ void Profile::LayerJson(const Json::Value& json)
 
     // Profile-specific Settings
     JsonUtils::GetValueForKey(json, NameKey, _Name);
+    JsonUtils::GetValueForKey(json, UpdatesKey, _Updates);
     JsonUtils::GetValueForKey(json, GuidKey, _Guid);
     JsonUtils::GetValueForKey(json, HiddenKey, _Hidden);
     JsonUtils::GetValueForKey(json, SourceKey, _Source);
@@ -482,7 +486,7 @@ bool Profile::IsDynamicProfileObject(const Json::Value& json)
 // - name: The name to generate a unique GUID from
 // Return Value:
 // - a uuidv5 GUID generated from the given name.
-winrt::guid Profile::_GenerateGuidForProfile(const hstring& name, const hstring& source) noexcept
+winrt::guid Profile::_GenerateGuidForProfile(const std::wstring_view& name, const std::wstring_view& source) noexcept
 {
     // If we have a _source, then we can from a dynamic profile generator. Use
     // our source to build the namespace guid, instead of using the default GUID.
@@ -494,27 +498,6 @@ winrt::guid Profile::_GenerateGuidForProfile(const hstring& name, const hstring&
     // Always use the name to generate the temporary GUID. That way, across
     // reloads, we'll generate the same static GUID.
     return { Utils::CreateV5Uuid(namespaceGuid, gsl::as_bytes(gsl::make_span(name))) };
-}
-
-// Function Description:
-// - Parses the given JSON object to get its GUID. If the json object does not
-//   have a `guid` set, we'll generate one, using the `name` field.
-// Arguments:
-// - json: the JSON object to get a GUID from, or generate a unique GUID for
-//   (given the `name`)
-// Return Value:
-// - The json's `guid`, or a guid synthesized for it.
-winrt::guid Profile::GetGuidOrGenerateForJson(const Json::Value& json) noexcept
-{
-    if (const auto guid{ JsonUtils::GetValueForKey<std::optional<GUID>>(json, GuidKey) })
-    {
-        return { guid.value() };
-    }
-
-    const auto name{ JsonUtils::GetValueForKey<hstring>(json, NameKey) };
-    const auto source{ JsonUtils::GetValueForKey<hstring>(json, SourceKey) };
-
-    return Profile::_GenerateGuidForProfile(name, source);
 }
 
 // Method Description:

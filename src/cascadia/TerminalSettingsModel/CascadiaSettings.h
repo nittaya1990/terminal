@@ -55,12 +55,38 @@ public:
 
 namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 {
+    struct ParsedSettings
+    {
+        ParsedSettings() noexcept = default;
+        explicit ParsedSettings(OriginTag origin, const std::string_view& content);
+
+        winrt::Windows::Foundation::Collections::IObservableVector<Model::Profile> fuckyou1() const
+        {
+            std::vector<Model::Profile> vec;
+            vec.reserve(profiles.size());
+
+            for (const auto& p : profiles)
+            {
+                vec.emplace_back(*p);
+            }
+
+            return winrt::single_threaded_observable_vector(std::move(vec));
+        }
+
+        winrt::com_ptr<GlobalAppSettings> globals;
+        winrt::com_ptr<Profile> profileDefaults;
+        std::vector<winrt::com_ptr<Profile>> profiles;
+        std::unordered_map<winrt::guid, winrt::com_ptr<Profile>> profilesByGuid;
+    };
+
     struct CascadiaSettings : CascadiaSettingsT<CascadiaSettings>
     {
     public:
-        CascadiaSettings();
-        explicit CascadiaSettings(const bool addDynamicProfiles);
-        CascadiaSettings(hstring json);
+        CascadiaSettings() = default;
+        explicit CascadiaSettings(std::string_view json);
+        explicit CascadiaSettings(std::wstring_view json);
+        explicit CascadiaSettings(const winrt::hstring& json);
+
         Model::CascadiaSettings Copy() const;
 
         static Model::CascadiaSettings LoadDefaults();
@@ -107,22 +133,15 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         void CurrentDefaultTerminal(Model::DefaultTerminal terminal);
 
     private:
-        com_ptr<GlobalAppSettings> _globals;
-        Windows::Foundation::Collections::IObservableVector<Model::Profile> _allProfiles;
-        Windows::Foundation::Collections::IObservableVector<Model::Profile> _activeProfiles;
-        Windows::Foundation::Collections::IVector<Model::SettingsLoadWarnings> _warnings;
+        com_ptr<GlobalAppSettings> _globals{ winrt::make_self<implementation::GlobalAppSettings>() };
+        Windows::Foundation::Collections::IObservableVector<Model::Profile> _allProfiles{ winrt::single_threaded_observable_vector<Model::Profile>() };
+        Windows::Foundation::Collections::IObservableVector<Model::Profile> _activeProfiles{ winrt::single_threaded_observable_vector<Model::Profile>() };
+        Windows::Foundation::Collections::IVector<Model::SettingsLoadWarnings> _warnings{ winrt::single_threaded_vector<SettingsLoadWarnings>() };
         Windows::Foundation::IReference<SettingsLoadErrors> _loadError;
         hstring _deserializationErrorMessage;
-
-        Windows::Foundation::Collections::IObservableVector<Model::DefaultTerminal> _defaultTerminals;
-        Model::DefaultTerminal _currentDefaultTerminal;
-
-        std::vector<std::unique_ptr<::Microsoft::Terminal::Settings::Model::IDynamicProfileGenerator>> _profileGenerators;
-
-        std::string _userSettingsString;
-        Json::Value _userSettings;
-        Json::Value _defaultSettings;
-        winrt::com_ptr<Profile> _userDefaultProfileSettings{ nullptr };
+        Windows::Foundation::Collections::IObservableVector<Model::DefaultTerminal> _defaultTerminals{ winrt::single_threaded_observable_vector<Model::DefaultTerminal>() };
+        Model::DefaultTerminal _currentDefaultTerminal{ nullptr };
+        winrt::com_ptr<Profile> _userDefaultProfileSettings;
 
         winrt::com_ptr<Profile> _CreateNewProfile(const std::wstring_view& name) const;
 
@@ -130,27 +149,22 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         winrt::com_ptr<implementation::Profile> _FindMatchingProfile(const Json::Value& profileJson);
         std::optional<uint32_t> _FindMatchingProfileIndex(const Json::Value& profileJson);
         void _LayerOrCreateColorScheme(const Json::Value& schemeJson);
-        Json::Value _ParseUtf8JsonString(std::string_view fileData);
+        static Json::Value _ParseUtf8JsonString(std::string_view fileData);
 
         winrt::com_ptr<implementation::ColorScheme> _FindMatchingColorScheme(const Json::Value& schemeJson);
-        void _ParseJsonString(std::string_view fileData, const bool isDefaultSettings);
         static const Json::Value& _GetProfilesJsonObject(const Json::Value& json);
-        static const Json::Value& _GetDisabledProfileSourcesJsonObject(const Json::Value& json);
-        bool _PrependSchemaDirective();
-        bool _AppendDynamicProfilesToUserSettings();
-        std::string _ApplyFirstRunChangesToSettingsTemplate(std::string_view settingsTemplate) const;
+        static std::string _ApplyFirstRunChangesToSettingsTemplate(const std::string_view& settingsTemplate);
         void _CopyProfileInheritanceTree(com_ptr<CascadiaSettings>& cloneSettings) const;
 
-        void _ApplyDefaultsFromUserSettings();
+        void _ApplyDefaultsFromUserSettings(const Json::Value& userSettings);
 
-        void _LoadDynamicProfiles();
-        void _LoadFragmentExtensions();
+        void _LoadDynamicProfiles(const std::unordered_set<std::wstring>& ignoredNamespaces);
+        void _LoadFragmentExtensions(const std::unordered_set<std::wstring>& ignoredNamespaces);
         void _ApplyJsonStubsHelper(const std::wstring_view directory, const std::unordered_set<std::wstring>& ignoredNamespaces);
         std::unordered_set<std::string> _AccumulateJsonFilesInDirectory(const std::wstring_view directory);
         void _ParseAndLayerFragmentFiles(const std::unordered_set<std::string> files, const winrt::hstring source);
 
         static const std::filesystem::path& _SettingsPath();
-        static std::optional<std::string> _ReadUserSettings();
 
         std::optional<guid> _GetProfileGuidByName(const hstring) const;
         std::optional<guid> _GetProfileGuidByIndex(std::optional<int> index) const;
@@ -160,13 +174,11 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         void _ValidateDefaultProfileExists();
         void _ValidateNoDuplicateProfiles();
         void _ResolveDefaultProfile();
-        void _ReorderProfilesToMatchUserSettingsOrder();
         void _UpdateActiveProfiles();
         void _ValidateAllSchemesExist();
         void _ValidateMediaResources();
         void _ValidateKeybindings();
         void _ValidateColorSchemesInCommands();
-        void _ValidateNoGlobalsKey();
 
         bool _HasInvalidColorScheme(const Model::Command& command);
 

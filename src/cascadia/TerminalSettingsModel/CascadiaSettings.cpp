@@ -7,10 +7,6 @@
 
 #include <LibraryResources.h>
 
-#include "AzureCloudShellGenerator.h"
-#include "PowershellCoreProfileGenerator.h"
-#include "WslDistroGenerator.h"
-
 using namespace ::Microsoft::Terminal::Settings::Model;
 using namespace winrt::Microsoft::Terminal;
 using namespace winrt::Microsoft::Terminal::Control;
@@ -18,50 +14,22 @@ using namespace winrt::Microsoft::Terminal::Settings::Model::implementation;
 using namespace winrt::Windows::Foundation::Collections;
 using namespace Microsoft::Console;
 
-static constexpr std::wstring_view PACKAGED_PROFILE_ICON_PATH{ L"ms-appx:///ProfileIcons/" };
-
-static constexpr std::wstring_view PACKAGED_PROFILE_ICON_EXTENSION{ L".png" };
-static constexpr std::wstring_view DEFAULT_LINUX_ICON_GUID{ L"{9acb9455-ca41-5af7-950f-6bca1bc9722f}" };
-
-// make sure this matches defaults.json.
-static constexpr std::wstring_view DEFAULT_WINDOWS_POWERSHELL_GUID{ L"{61c54bbd-c2c6-5271-96e7-009a87ff44bf}" };
-
-CascadiaSettings::CascadiaSettings() :
-    CascadiaSettings(true)
+CascadiaSettings::CascadiaSettings(std::string_view json)
 {
-}
-
-// Constructor Description:
-// - Creates a new settings object. If addDynamicProfiles is true, we'll
-//   automatically add the built-in profile generators to our list of profile
-//   generators. Set this to `false` for unit testing.
-// Arguments:
-// - addDynamicProfiles: if true, we'll add the built-in DPGs.
-CascadiaSettings::CascadiaSettings(const bool addDynamicProfiles) :
-    _globals{ winrt::make_self<implementation::GlobalAppSettings>() },
-    _allProfiles{ winrt::single_threaded_observable_vector<Model::Profile>() },
-    _activeProfiles{ winrt::single_threaded_observable_vector<Model::Profile>() },
-    _warnings{ winrt::single_threaded_vector<SettingsLoadWarnings>() },
-    _deserializationErrorMessage{ L"" },
-    _defaultTerminals{ winrt::single_threaded_observable_vector<Model::DefaultTerminal>() },
-    _currentDefaultTerminal{ nullptr }
-{
-    if (addDynamicProfiles)
-    {
-        _profileGenerators.emplace_back(std::make_unique<PowershellCoreProfileGenerator>());
-        _profileGenerators.emplace_back(std::make_unique<WslDistroGenerator>());
-        _profileGenerators.emplace_back(std::make_unique<AzureCloudShellGenerator>());
-    }
-}
-
-CascadiaSettings::CascadiaSettings(winrt::hstring json) :
-    CascadiaSettings(false)
-{
-    const auto jsonString{ til::u16u8(json) };
-    _ParseJsonString(jsonString, false);
-    _ApplyDefaultsFromUserSettings();
-    LayerJson(_userSettings);
+    ParsedSettings parsed{ OriginTag::User, json };
+    _globals = parsed.globals;
+    _allProfiles = parsed.fuckyou1();
     _ValidateSettings();
+}
+
+CascadiaSettings::CascadiaSettings(std::wstring_view json) :
+    CascadiaSettings(til::u16u8(json))
+{
+}
+
+CascadiaSettings::CascadiaSettings(const winrt::hstring& json) :
+    CascadiaSettings(til::u16u8(json))
+{
 }
 
 winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings CascadiaSettings::Copy() const
@@ -69,15 +37,14 @@ winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings CascadiaSettings::
     // dynamic profile generators added by default
     auto settings{ winrt::make_self<CascadiaSettings>() };
     settings->_globals = _globals->Copy();
+
     for (auto warning : _warnings)
     {
         settings->_warnings.Append(warning);
     }
+
     settings->_loadError = _loadError;
     settings->_deserializationErrorMessage = _deserializationErrorMessage;
-    settings->_userSettingsString = _userSettingsString;
-    settings->_userSettings = _userSettings;
-    settings->_defaultSettings = _defaultSettings;
 
     settings->_defaultTerminals = _defaultTerminals;
     settings->_currentDefaultTerminal = _currentDefaultTerminal;
@@ -452,10 +419,6 @@ void CascadiaSettings::_ValidateSettings()
     // Make sure to check that profiles exists at all first and foremost:
     _ValidateProfilesExist();
 
-    // Re-order profiles so that all profiles from the user's settings appear
-    // before profiles that _weren't_ in the user profiles.
-    _ReorderProfilesToMatchUserSettingsOrder();
-
     // Remove hidden profiles _after_ re-ordering. The re-ordering uses the raw
     // json, and will get confused if the profile isn't in the list.
     _UpdateActiveProfiles();
@@ -488,8 +451,6 @@ void CascadiaSettings::_ValidateSettings()
     _ValidateKeybindings();
 
     _ValidateColorSchemesInCommands();
-
-    _ValidateNoGlobalsKey();
 }
 
 // Method Description:
@@ -567,8 +528,7 @@ void CascadiaSettings::_ValidateNoDuplicateProfiles()
     bool foundDupe = false;
 
     std::vector<uint32_t> indicesToDelete;
-
-    std::set<winrt::guid> uniqueGuids;
+    std::unordered_set<winrt::guid> uniqueGuids;
 
     // Try collecting all the unique guids. If we ever encounter a guid that's
     // already in the set, then we need to delete that profile.
@@ -591,62 +551,6 @@ void CascadiaSettings::_ValidateNoDuplicateProfiles()
     if (foundDupe)
     {
         _warnings.Append(Microsoft::Terminal::Settings::Model::SettingsLoadWarnings::DuplicateProfile);
-    }
-}
-
-// Method Description:
-// - Re-orders the list of profiles to match what the user would expect them to
-//   be. Orders profiles to be in the ordering { [profiles from user settings],
-//   [default profiles that weren't in the user profiles]}.
-// - Does not set any warnings.
-// Arguments:
-// - <none>
-// Return Value:
-// - <none>
-void CascadiaSettings::_ReorderProfilesToMatchUserSettingsOrder()
-{
-    std::set<winrt::guid> uniqueGuids;
-    std::deque<winrt::guid> guidOrder;
-
-    auto collectGuids = [&](const auto& json) {
-        for (auto profileJson : _GetProfilesJsonObject(json))
-        {
-            if (profileJson.isObject())
-            {
-                auto guid = implementation::Profile::GetGuidOrGenerateForJson(profileJson);
-                if (uniqueGuids.insert(guid).second)
-                {
-                    guidOrder.push_back(guid);
-                }
-            }
-        }
-    };
-
-    // Push all the userSettings profiles' GUIDS into the set
-    collectGuids(_userSettings);
-
-    // Push all the defaultSettings profiles' GUIDS into the set
-    collectGuids(_defaultSettings);
-    std::equal_to<winrt::guid> equals;
-    // Re-order the list of profiles to match that ordering
-    // for (gIndex=0 -> uniqueGuids.size)
-    //   pIndex = the pIndex of the profile with guid==guids[gIndex]
-    //   profiles.swap(pIndex <-> gIndex)
-    // This is O(N^2), which is kinda rough. I'm sure there's a better way
-    for (uint32_t gIndex = 0; gIndex < guidOrder.size(); gIndex++)
-    {
-        const auto guid = guidOrder.at(gIndex);
-        for (uint32_t pIndex = gIndex; pIndex < _allProfiles.Size(); pIndex++)
-        {
-            auto profileGuid = _allProfiles.GetAt(pIndex).Guid();
-            if (equals(profileGuid, guid))
-            {
-                auto prof1 = _allProfiles.GetAt(pIndex);
-                _allProfiles.SetAt(pIndex, _allProfiles.GetAt(gIndex));
-                _allProfiles.SetAt(gIndex, prof1);
-                break;
-            }
-        }
     }
 }
 
@@ -1013,66 +917,6 @@ bool CascadiaSettings::_HasInvalidColorScheme(const Model::Command& command)
     }
 
     return invalid;
-}
-
-// Method Description:
-// - Checks for the presence of the legacy "globals" key in the user's
-//   settings.json. If this key is present, then they've probably got a pre-0.11
-//   settings file that won't work as expected anymore. We should warn them
-//   about that.
-// Arguments:
-// - <none>
-// Return Value:
-// - <none>
-// - Appends a SettingsLoadWarnings::LegacyGlobalsProperty to our list of warnings if
-//   we find any invalid background images.
-void CascadiaSettings::_ValidateNoGlobalsKey()
-{
-    // use isMember here. If you use [], you're actually injecting "globals": null.
-    if (_userSettings.isMember("globals"))
-    {
-        _warnings.Append(SettingsLoadWarnings::LegacyGlobalsProperty);
-    }
-}
-
-// Method Description
-// - Replaces known tokens DEFAULT_PROFILE, PRODUCT and VERSION in the settings template
-//   with their expected values. DEFAULT_PROFILE is updated to match PowerShell Core's GUID
-//   if such a profile is detected. If it isn't, it'll be set to Windows PowerShell's GUID.
-// Arguments:
-// - settingsTemplate: a settings template
-// Return value:
-// - The new settings string.
-std::string CascadiaSettings::_ApplyFirstRunChangesToSettingsTemplate(std::string_view settingsTemplate) const
-{
-    // We're using replace_needle_in_haystack_inplace here, because it's more
-    // efficient to iteratively modify a single string in-place than it is to
-    // keep copying over the contents and modifying a copy (which
-    // replace_needle_in_haystack would do).
-    std::string finalSettings{ settingsTemplate };
-
-    std::wstring defaultProfileGuid{ DEFAULT_WINDOWS_POWERSHELL_GUID };
-    if (const auto psCoreProfileGuid{ _GetProfileGuidByName(hstring{ PowershellCoreProfileGenerator::GetPreferredPowershellProfileName() }) })
-    {
-        defaultProfileGuid = Utils::GuidToString(*psCoreProfileGuid);
-    }
-
-    til::replace_needle_in_haystack_inplace(finalSettings,
-                                            "%DEFAULT_PROFILE%",
-                                            til::u16u8(defaultProfileGuid));
-
-    til::replace_needle_in_haystack_inplace(finalSettings,
-                                            "%VERSION%",
-                                            til::u16u8(ApplicationVersion()));
-    til::replace_needle_in_haystack_inplace(finalSettings,
-                                            "%PRODUCT%",
-                                            til::u16u8(ApplicationDisplayName()));
-
-    til::replace_needle_in_haystack_inplace(finalSettings,
-                                            "%COMMAND_PROMPT_LOCALIZED_NAME%",
-                                            RS_A(L"CommandPromptDisplayName"));
-
-    return finalSettings;
 }
 
 // Method Description:

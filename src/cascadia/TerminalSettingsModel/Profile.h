@@ -99,7 +99,6 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         Json::Value ToJson() const;
 
         hstring EvaluatedStartingDirectory() const;
-        static guid GetGuidOrGenerateForJson(const Json::Value& json) noexcept;
 
         Model::IAppearanceConfig DefaultAppearance();
         Model::FontConfig FontInfo();
@@ -109,6 +108,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         WINRT_PROPERTY(bool, Deleted, false);
         WINRT_PROPERTY(OriginTag, Origin, OriginTag::None);
 
+        WINRT_PROPERTY(guid, Updates);
         INHERITABLE_SETTING(Model::Profile, guid, Guid, _GenerateGuidForProfile(Name(), Source()));
         INHERITABLE_SETTING(Model::Profile, hstring, Name, L"Default");
         INHERITABLE_SETTING(Model::Profile, hstring, Source);
@@ -149,7 +149,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         Model::FontConfig _FontInfo{ winrt::make<FontConfig>(weak_ref<Model::Profile>(*this)) };
         static std::wstring EvaluateStartingDirectory(const std::wstring& directory);
 
-        static guid _GenerateGuidForProfile(const hstring& name, const hstring& source) noexcept;
+        static guid _GenerateGuidForProfile(const std::wstring_view& name, const std::wstring_view& source) noexcept;
 
         friend class SettingsModelLocalTests::DeserializationTests;
         friend class SettingsModelLocalTests::ProfileTests;
