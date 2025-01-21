@@ -19,7 +19,7 @@ using namespace winrt::Microsoft::Terminal::Settings::Model;
 
 namespace winrt::TerminalApp::implementation
 {
-    TabPaletteItem::TabPaletteItem(winrt::TerminalApp::TabBase const& tab) :
+    TabPaletteItem::TabPaletteItem(const winrt::TerminalApp::TabBase& tab) :
         _tab(tab)
     {
         Name(tab.Title());
@@ -52,7 +52,7 @@ namespace winrt::TerminalApp::implementation
                 // Sometimes nested bindings do not get updated,
                 // thus let's notify property changed on TabStatus when one of its properties changes
                 auto item{ weakThis.get() };
-                item->_PropertyChangedHandlers(*item, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ L"TabStatus" });
+                item->PropertyChanged.raise(*item, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ L"TabStatus" });
             });
         }
     }

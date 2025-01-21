@@ -7,10 +7,14 @@
 using namespace Microsoft::Console;
 using namespace Microsoft::Console::Render;
 
-RenderEngineBase::RenderEngineBase() :
-    _titleChanged(false),
-    _lastFrameTitle(L"")
+[[nodiscard]] HRESULT RenderEngineBase::InvalidateSelection(std::span<const til::rect> /*selections*/) noexcept
 {
+    return S_OK;
+}
+
+[[nodiscard]] HRESULT RenderEngineBase::InvalidateHighlight(std::span<const til::point_span> /*highlights*/, const TextBuffer& /*renditions*/) noexcept
+{
+    return S_OK;
 }
 
 HRESULT RenderEngineBase::InvalidateTitle(const std::wstring_view proposedTitle) noexcept
@@ -25,7 +29,7 @@ HRESULT RenderEngineBase::InvalidateTitle(const std::wstring_view proposedTitle)
 
 HRESULT RenderEngineBase::UpdateTitle(const std::wstring_view newTitle) noexcept
 {
-    HRESULT hr = S_FALSE;
+    auto hr = S_FALSE;
     if (newTitle != _lastFrameTitle)
     {
         RETURN_IF_FAILED(_DoUpdateTitle(newTitle));
@@ -36,14 +40,19 @@ HRESULT RenderEngineBase::UpdateTitle(const std::wstring_view newTitle) noexcept
     return hr;
 }
 
-HRESULT RenderEngineBase::UpdateSoftFont(const gsl::span<const uint16_t> /*bitPattern*/,
-                                         const SIZE /*cellSize*/,
+HRESULT RenderEngineBase::NotifyNewText(const std::wstring_view /*newText*/) noexcept
+{
+    return S_FALSE;
+}
+
+HRESULT RenderEngineBase::UpdateSoftFont(const std::span<const uint16_t> /*bitPattern*/,
+                                         const til::size /*cellSize*/,
                                          const size_t /*centeringHint*/) noexcept
 {
     return S_FALSE;
 }
 
-HRESULT RenderEngineBase::PrepareRenderInfo(const RenderFrameInfo& /*info*/) noexcept
+HRESULT RenderEngineBase::PrepareRenderInfo(RenderFrameInfo /*info*/) noexcept
 {
     return S_FALSE;
 }
@@ -54,8 +63,15 @@ HRESULT RenderEngineBase::ResetLineTransform() noexcept
 }
 
 HRESULT RenderEngineBase::PrepareLineTransform(const LineRendition /*lineRendition*/,
-                                               const size_t /*targetRow*/,
-                                               const size_t /*viewportLeft*/) noexcept
+                                               const til::CoordType /*targetRow*/,
+                                               const til::CoordType /*viewportLeft*/) noexcept
+{
+    return S_FALSE;
+}
+
+HRESULT RenderEngineBase::PaintImageSlice(const ImageSlice& /*imageSlice*/,
+                                          const til::CoordType /*targetRow*/,
+                                          const til::CoordType /*viewportLeft*/) noexcept
 {
     return S_FALSE;
 }
@@ -74,5 +90,10 @@ HRESULT RenderEngineBase::PrepareLineTransform(const LineRendition /*lineRenditi
 // - Blocks until the engine is able to render without blocking.
 void RenderEngineBase::WaitUntilCanRender() noexcept
 {
-    // do nothing by default
+    // Throttle the render loop a bit by default (~60 FPS), improving throughput.
+    Sleep(8);
+}
+
+void RenderEngineBase::UpdateHyperlinkHoveredId(const uint16_t /*hoveredId*/) noexcept
+{
 }

@@ -4,15 +4,16 @@
 #include "pch.h"
 #include "DynamicProfileUtils.h"
 #include "VisualStudioGenerator.h"
-#include "VcDevCmdGenerator.h"
 #include "VsDevCmdGenerator.h"
 #include "VsDevShellGenerator.h"
 
 using namespace winrt::Microsoft::Terminal::Settings::Model;
 
+std::wstring_view VisualStudioGenerator::Namespace{ L"Windows.Terminal.VisualStudio" };
+
 std::wstring_view VisualStudioGenerator::GetNamespace() const noexcept
 {
-    return std::wstring_view{ L"Windows.Terminal.VisualStudio" };
+    return Namespace;
 }
 
 void VisualStudioGenerator::GenerateProfiles(std::vector<winrt::com_ptr<implementation::Profile>>& profiles) const
@@ -20,17 +21,14 @@ void VisualStudioGenerator::GenerateProfiles(std::vector<winrt::com_ptr<implemen
     const auto instances = VsSetupConfiguration::QueryInstances();
 
     VsDevCmdGenerator devCmdGenerator;
-    VcDevCmdGenerator vcCmdGenerator;
     VsDevShellGenerator devShellGenerator;
 
     // Instances are ordered from latest to oldest. Hide all but the profiles for the latest instance.
-    bool hidden = false;
-    for (auto const& instance : instances)
+    auto hidden = false;
+    for (const auto& instance : instances)
     {
         devCmdGenerator.GenerateProfiles(instance, hidden, profiles);
-        vcCmdGenerator.GenerateProfiles(instance, hidden, profiles);
         devShellGenerator.GenerateProfiles(instance, hidden, profiles);
-
         hidden = true;
     }
 }

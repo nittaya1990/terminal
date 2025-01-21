@@ -56,12 +56,12 @@ namespace winrt::Microsoft::Terminal::Settings::Model
                 return VsSetupConfiguration::GetInstallationVersion(inst.get());
             }
 
-            unsigned long long GetComparableInstallDate() const
+            unsigned long long GetComparableInstallDate() const noexcept
             {
                 return installDate;
             }
 
-            unsigned long long GetComparableVersion() const
+            unsigned long long GetComparableVersion() const noexcept
             {
                 return version;
             }
@@ -114,9 +114,6 @@ namespace winrt::Microsoft::Terminal::Settings::Model
                 return profileNameSuffix;
             }
 
-        private:
-            friend class VsSetupConfiguration;
-
             VsSetupInstance(ComPtrSetupQuery pQuery, ComPtrSetupInstance pInstance) :
                 query(pQuery), // Copy and AddRef the query object.
                 inst(std::move(pInstance)), // Take ownership of the instance object.
@@ -126,6 +123,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model
             {
             }
 
+        private:
             ComPtrSetupQuery query;
             ComPtrSetupInstance inst;
 
@@ -137,31 +135,31 @@ namespace winrt::Microsoft::Terminal::Settings::Model
 
             std::wstring BuildProfileNameSuffix() const
             {
-                ComPtrCatalogPropertyStore catalogProperties = GetCatalogPropertyStore();
+                auto catalogProperties = GetCatalogPropertyStore();
                 if (catalogProperties != nullptr)
                 {
                     std::wstring suffix;
 
-                    std::wstring productLine{ GetProductLineVersion(catalogProperties.get()) };
+                    auto productLine{ GetProductLineVersion(catalogProperties.get()) };
                     suffix.append(productLine);
 
-                    ComPtrCustomPropertyStore customProperties = GetCustomPropertyStore();
+                    auto customProperties = GetCustomPropertyStore();
                     if (customProperties != nullptr)
                     {
-                        std::wstring nickname{ GetNickname(customProperties.get()) };
+                        auto nickname{ GetNickname(customProperties.get()) };
                         if (!nickname.empty())
                         {
                             suffix.append(L" (" + nickname + L")");
                         }
                         else
                         {
-                            ComPtrPropertyStore instanceProperties = GetInstancePropertyStore();
+                            auto instanceProperties = GetInstancePropertyStore();
                             suffix.append(GetChannelNameSuffixTag(instanceProperties.get()));
                         }
                     }
                     else
                     {
-                        ComPtrPropertyStore instanceProperties = GetInstancePropertyStore();
+                        auto instanceProperties = GetInstancePropertyStore();
                         suffix.append(GetChannelNameSuffixTag(instanceProperties.get()));
                     }
 
@@ -180,7 +178,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model
             {
                 const auto helper = wil::com_query<ISetupHelper>(query);
 
-                std::wstring versionString{ GetVersion() };
+                auto versionString{ GetVersion() };
                 unsigned long long version{ 0 };
 
                 THROW_IF_FAILED(helper->ParseVersion(versionString.data(), &version));
@@ -190,7 +188,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model
             static std::wstring GetChannelNameSuffixTag(ISetupPropertyStore* instanceProperties)
             {
                 std::wstring tag;
-                std::wstring channelName{ GetChannelName(instanceProperties) };
+                auto channelName{ GetChannelName(instanceProperties) };
 
                 if (channelName.empty())
                 {
@@ -212,7 +210,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model
 
             static std::wstring GetChannelName(ISetupPropertyStore* instanceProperties)
             {
-                std::wstring channelId{ GetChannelId(instanceProperties) };
+                auto channelId{ GetChannelId(instanceProperties) };
                 if (channelId.empty())
                 {
                     return channelId;
@@ -221,7 +219,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model
                 std::wstring channelName;
 
                 // channelId is in the format  <ProductName>.<MajorVersion>.<ChannelName>
-                size_t pos = channelId.rfind(L".");
+                auto pos = channelId.rfind(L".");
                 if (pos != std::wstring::npos)
                 {
                     channelName.append(channelId.substr(pos + 1));

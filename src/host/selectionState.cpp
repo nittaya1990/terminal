@@ -18,7 +18,7 @@ using namespace Microsoft::Console::Interactivity;
 // - True if the console is in a selecting state. False otherwise.
 bool Selection::IsInSelectingState() const
 {
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    const auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
     return WI_IsFlagSet(gci.Flags, CONSOLE_SELECTING);
 }
 
@@ -30,7 +30,7 @@ bool Selection::IsInSelectingState() const
 // - <none>
 void Selection::_SetSelectingState(const bool fSelectingOn)
 {
-    CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
     WI_UpdateFlag(gci.Flags, CONSOLE_SELECTING, fSelectingOn);
 }
 
@@ -43,7 +43,7 @@ void Selection::_SetSelectingState(const bool fSelectingOn)
 // - True if quick edit mode is enabled. False otherwise.
 bool Selection::IsInQuickEditMode() const
 {
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    const auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
     return WI_IsFlagSet(gci.Flags, CONSOLE_QUICK_EDIT_MODE);
 }
 
@@ -58,7 +58,7 @@ bool Selection::IsLineSelection() const
     // if line selection is on and alternate is off -OR-
     // if line selection is off and alternate is on...
 
-    return (_fLineSelection != _fUseAlternateSelection);
+    return (_d->fLineSelection != _d->fUseAlternateSelection);
 }
 
 // Routine Description:
@@ -75,14 +75,14 @@ void Selection::_AlignAlternateSelection(const bool fAlignToLineSelect)
         // states are opposite when in line selection.
         // e.g. Line = true, Alternate = false.
         // and  Line = false, Alternate = true.
-        _fUseAlternateSelection = !_fLineSelection;
+        _d.write()->fUseAlternateSelection = !_d->fLineSelection;
     }
     else
     {
         // states are the same when in box selection.
         // e.g. Line = true, Alternate = true.
         // and  Line = false, Alternate = false.
-        _fUseAlternateSelection = _fLineSelection;
+        _d.write()->fUseAlternateSelection = _d->fLineSelection;
     }
 }
 
@@ -94,7 +94,7 @@ void Selection::_AlignAlternateSelection(const bool fAlignToLineSelect)
 // - True if the selection variables contain valid selection data. False otherwise.
 bool Selection::IsAreaSelected() const
 {
-    return WI_IsFlagSet(_dwSelectionFlags, CONSOLE_SELECTION_NOT_EMPTY);
+    return WI_IsFlagSet(_d->dwSelectionFlags, CONSOLE_SELECTION_NOT_EMPTY);
 }
 
 // Routine Description:
@@ -105,7 +105,7 @@ bool Selection::IsAreaSelected() const
 // - True if the selection was started as mark mode. False otherwise.
 bool Selection::IsKeyboardMarkSelection() const
 {
-    return WI_IsFlagClear(_dwSelectionFlags, CONSOLE_MOUSE_SELECTION);
+    return WI_IsFlagClear(_d->dwSelectionFlags, CONSOLE_MOUSE_SELECTION);
 }
 
 // Routine Description:
@@ -118,7 +118,7 @@ bool Selection::IsKeyboardMarkSelection() const
 // - True if the selection is mouse-initiated. False otherwise.
 bool Selection::IsMouseInitiatedSelection() const
 {
-    return WI_IsFlagSet(_dwSelectionFlags, CONSOLE_MOUSE_SELECTION);
+    return WI_IsFlagSet(_d->dwSelectionFlags, CONSOLE_MOUSE_SELECTION);
 }
 
 // Routine Description:
@@ -130,16 +130,16 @@ bool Selection::IsMouseInitiatedSelection() const
 // - True if the mouse button is currently down. False otherwise.
 bool Selection::IsMouseButtonDown() const
 {
-    return WI_IsFlagSet(_dwSelectionFlags, CONSOLE_MOUSE_DOWN);
+    return WI_IsFlagSet(_d->dwSelectionFlags, CONSOLE_MOUSE_DOWN);
 }
 
 void Selection::MouseDown()
 {
-    WI_SetFlag(_dwSelectionFlags, CONSOLE_MOUSE_DOWN);
+    WI_SetFlag(_d.write()->dwSelectionFlags, CONSOLE_MOUSE_DOWN);
 
     // We must capture the mouse on button down to ensure we receive messages if
     //      it comes back up outside the window.
-    IConsoleWindow* const pWindow = ServiceLocator::LocateConsoleWindow();
+    const auto pWindow = ServiceLocator::LocateConsoleWindow();
     if (pWindow != nullptr)
     {
         pWindow->CaptureMouse();
@@ -148,9 +148,9 @@ void Selection::MouseDown()
 
 void Selection::MouseUp()
 {
-    WI_ClearFlag(_dwSelectionFlags, CONSOLE_MOUSE_DOWN);
+    WI_ClearFlag(_d.write()->dwSelectionFlags, CONSOLE_MOUSE_DOWN);
 
-    IConsoleWindow* const pWindow = ServiceLocator::LocateConsoleWindow();
+    const auto pWindow = ServiceLocator::LocateConsoleWindow();
     if (pWindow != nullptr)
     {
         pWindow->ReleaseMouse();
@@ -165,11 +165,11 @@ void Selection::MouseUp()
 // - <none>
 void Selection::_SaveCursorData(const Cursor& cursor) noexcept
 {
-    _coordSavedCursorPosition = cursor.GetPosition();
-    _ulSavedCursorSize = cursor.GetSize();
-    _fSavedCursorVisible = cursor.IsVisible();
-    _savedCursorColor = cursor.GetColor();
-    _savedCursorType = cursor.GetType();
+    auto d{ _d.write() };
+    d->coordSavedCursorPosition = cursor.GetPosition();
+    d->ulSavedCursorSize = cursor.GetSize();
+    d->fSavedCursorVisible = cursor.IsVisible();
+    d->savedCursorType = cursor.GetType();
 }
 
 // Routine Description:
@@ -180,12 +180,11 @@ void Selection::_SaveCursorData(const Cursor& cursor) noexcept
 // - <none>
 void Selection::_RestoreDataToCursor(Cursor& cursor) noexcept
 {
-    cursor.SetSize(_ulSavedCursorSize);
-    cursor.SetIsVisible(_fSavedCursorVisible);
-    cursor.SetColor(_savedCursorColor);
-    cursor.SetType(_savedCursorType);
+    cursor.SetSize(_d->ulSavedCursorSize);
+    cursor.SetIsVisible(_d->fSavedCursorVisible);
+    cursor.SetType(_d->savedCursorType);
     cursor.SetIsOn(true);
-    cursor.SetPosition(_coordSavedCursorPosition);
+    cursor.SetPosition(_d->coordSavedCursorPosition);
 }
 
 // Routine Description:
@@ -194,9 +193,41 @@ void Selection::_RestoreDataToCursor(Cursor& cursor) noexcept
 // - none
 // Return Value:
 // - current selection anchor
-COORD Selection::GetSelectionAnchor() const noexcept
+til::point Selection::GetSelectionAnchor() const noexcept
 {
-    return _coordSelectionAnchor;
+    return _d->coordSelectionAnchor;
+}
+
+// Routine Description:
+// - Gets the current selection begin and end (inclusive) anchor positions. The
+//   first anchor is at the top left, and the second is at the bottom right
+//   corner of the selection area.
+// Return Value:
+// - The current selection anchors
+std::pair<til::point, til::point> Selection::GetSelectionAnchors() const noexcept
+{
+    if (!_d->fSelectionVisible)
+    {
+        // return anchors that represent an empty selection
+        return { { 0, 0 }, { -1, -1 } };
+    }
+
+    auto startSelectionAnchor = _d->coordSelectionAnchor;
+
+    // _coordSelectionAnchor is at one of the corners of _srSelectionRects
+    // endSelectionAnchor is at the exact opposite corner
+    til::point endSelectionAnchor;
+    endSelectionAnchor.x = (_d->coordSelectionAnchor.x == _d->srSelectionRect.left) ? _d->srSelectionRect.right : _d->srSelectionRect.left;
+    endSelectionAnchor.y = (_d->coordSelectionAnchor.y == _d->srSelectionRect.top) ? _d->srSelectionRect.bottom : _d->srSelectionRect.top;
+
+    if (startSelectionAnchor > endSelectionAnchor)
+    {
+        return { endSelectionAnchor, startSelectionAnchor };
+    }
+    else
+    {
+        return { startSelectionAnchor, endSelectionAnchor };
+    }
 }
 
 // Routine Description:
@@ -205,9 +236,9 @@ COORD Selection::GetSelectionAnchor() const noexcept
 // - none
 // Return Value:
 // - The rectangle to fill with selection data.
-SMALL_RECT Selection::GetSelectionRectangle() const noexcept
+til::inclusive_rect Selection::GetSelectionRectangle() const noexcept
 {
-    return _srSelectionRect;
+    return _d->srSelectionRect;
 }
 
 // Routine Description:
@@ -220,7 +251,7 @@ SMALL_RECT Selection::GetSelectionRectangle() const noexcept
 DWORD Selection::GetPublicSelectionFlags() const noexcept
 {
     // CONSOLE_SELECTION_VALID is the union (binary OR) of all externally valid flags in wincon.h
-    return (_dwSelectionFlags & CONSOLE_SELECTION_VALID);
+    return (_d->dwSelectionFlags & CONSOLE_SELECTION_VALID);
 }
 
 // Routine Description:
@@ -232,12 +263,12 @@ DWORD Selection::GetPublicSelectionFlags() const noexcept
 // - <none>
 void Selection::SetLineSelection(const bool fLineSelectionOn)
 {
-    if (_fLineSelection != fLineSelectionOn)
+    if (_d->fLineSelection != fLineSelectionOn)
     {
         // Ensure any existing selections are cleared so the draw state is updated appropriately.
         ClearSelection();
 
-        _fLineSelection = fLineSelectionOn;
+        _d.write()->fLineSelection = fLineSelectionOn;
     }
 }
 
@@ -250,9 +281,9 @@ void Selection::SetLineSelection(const bool fLineSelectionOn)
 // - mousePosition - current mouse position
 // Return Value:
 // - true if the selection can be changed by a mouse drag
-bool Selection::ShouldAllowMouseDragSelection(const COORD mousePosition) const noexcept
+bool Selection::ShouldAllowMouseDragSelection(const til::point mousePosition) const noexcept
 {
-    const Viewport viewport = Viewport::FromInclusive(_srSelectionRect);
-    const bool selectionContainsMouse = viewport.IsInBounds(mousePosition);
-    return _allowMouseDragSelection || !selectionContainsMouse;
+    const auto viewport = Viewport::FromInclusive(_d->srSelectionRect);
+    const auto selectionContainsMouse = viewport.IsInBounds(mousePosition);
+    return _d->allowMouseDragSelection || !selectionContainsMouse;
 }

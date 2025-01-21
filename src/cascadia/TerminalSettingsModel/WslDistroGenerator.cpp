@@ -7,11 +7,11 @@
 #include "LegacyProfileGeneratorNamespaces.h"
 #include "../../inc/DefaultSettings.h"
 
-#include <io.h>
-#include <fcntl.h>
 #include "DynamicProfileUtils.h"
 
+static constexpr std::wstring_view WslHomeDirectory{ L"~" };
 static constexpr std::wstring_view DockerDistributionPrefix{ L"docker-desktop" };
+static constexpr std::wstring_view RancherDistributionPrefix{ L"rancher-desktop" };
 
 // The WSL entries are structured as such:
 // HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss
@@ -19,9 +19,22 @@ static constexpr std::wstring_view DockerDistributionPrefix{ L"docker-desktop" }
 //     ⌞ DistributionName: {the name}
 static constexpr wchar_t RegKeyLxss[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Lxss";
 static constexpr wchar_t RegKeyDistroName[] = L"DistributionName";
+static constexpr wchar_t RegKeyModern[] = L"Modern";
 
 using namespace ::Microsoft::Terminal::Settings::Model;
 using namespace winrt::Microsoft::Terminal::Settings::Model;
+
+static bool isWslDashDashCdAvailableForLinuxPaths() noexcept
+{
+    OSVERSIONINFOEXW osver{};
+    osver.dwOSVersionInfoSize = sizeof(osver);
+    osver.dwBuildNumber = 19041;
+
+    DWORDLONG dwlConditionMask = 0;
+    VER_SET_CONDITION(dwlConditionMask, VER_BUILDNUMBER, VER_GREATER_EQUAL);
+
+    return VerifyVersionInfoW(&osver, VER_BUILDNUMBER, dwlConditionMask) != FALSE;
+}
 
 // Legacy GUIDs:
 //   - Debian       58ad8b0c-3ef8-5f4d-bc6f-13e4c00f2530
@@ -37,110 +50,24 @@ std::wstring_view WslDistroGenerator::GetNamespace() const noexcept
 static winrt::com_ptr<implementation::Profile> makeProfile(const std::wstring& distName)
 {
     const auto WSLDistro{ CreateDynamicProfile(distName) };
-    WSLDistro->Commandline(winrt::hstring{ L"wsl.exe -d " + distName });
-    WSLDistro->DefaultAppearance().ColorSchemeName(L"Campbell");
-    WSLDistro->StartingDirectory(winrt::hstring{ DEFAULT_STARTING_DIRECTORY });
+    // GH#11096 - make sure the WSL path starts explicitly with
+    // C:\Windows\System32. Don't want someone path hijacking wsl.exe.
+    std::wstring command{};
+    THROW_IF_FAILED(wil::GetSystemDirectoryW<std::wstring>(command));
+    WSLDistro->Commandline(winrt::hstring{ command + L"\\wsl.exe -d " + distName });
+    WSLDistro->DefaultAppearance().DarkColorSchemeName(L"Campbell");
+    WSLDistro->DefaultAppearance().LightColorSchemeName(L"Campbell");
+    if (isWslDashDashCdAvailableForLinuxPaths())
+    {
+        WSLDistro->StartingDirectory(winrt::hstring{ WslHomeDirectory });
+    }
+    else
+    {
+        WSLDistro->StartingDirectory(winrt::hstring{ DEFAULT_STARTING_DIRECTORY });
+    }
     WSLDistro->Icon(L"ms-appx:///ProfileIcons/{9acb9455-ca41-5af7-950f-6bca1bc9722f}.png");
+    WSLDistro->PathTranslationStyle(winrt::Microsoft::Terminal::Control::PathTranslationStyle::WSL);
     return WSLDistro;
-}
-
-// Method Description:
-// -  Enumerates all the installed WSL distros to create profiles for them.
-// Arguments:
-// - <none>
-// Return Value:
-// - a vector with all distros for all the installed WSL distros
-static void legacyGenerate(std::vector<winrt::com_ptr<implementation::Profile>>& profiles)
-{
-    wil::unique_handle readPipe;
-    wil::unique_handle writePipe;
-    SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, true };
-    THROW_IF_WIN32_BOOL_FALSE(CreatePipe(&readPipe, &writePipe, &sa, 0));
-    STARTUPINFO si{ 0 };
-    si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdOutput = writePipe.get();
-    si.hStdError = writePipe.get();
-    wil::unique_process_information pi;
-    wil::unique_cotaskmem_string systemPath;
-    THROW_IF_FAILED(wil::GetSystemDirectoryW(systemPath));
-    std::wstring command(systemPath.get());
-    command += L"\\wsl.exe --list";
-
-    THROW_IF_WIN32_BOOL_FALSE(CreateProcessW(nullptr,
-                                             const_cast<LPWSTR>(command.c_str()),
-                                             nullptr,
-                                             nullptr,
-                                             TRUE,
-                                             CREATE_NO_WINDOW,
-                                             nullptr,
-                                             nullptr,
-                                             &si,
-                                             &pi));
-    switch (WaitForSingleObject(pi.hProcess, 2000))
-    {
-    case WAIT_OBJECT_0:
-        break;
-    case WAIT_ABANDONED:
-    case WAIT_TIMEOUT:
-        return;
-    case WAIT_FAILED:
-        THROW_LAST_ERROR();
-    default:
-        THROW_HR(ERROR_UNHANDLED_EXCEPTION);
-    }
-    DWORD exitCode;
-    if (!GetExitCodeProcess(pi.hProcess, &exitCode))
-    {
-        THROW_HR(E_INVALIDARG);
-    }
-    else if (exitCode != 0)
-    {
-        return;
-    }
-    DWORD bytesAvailable;
-    THROW_IF_WIN32_BOOL_FALSE(PeekNamedPipe(readPipe.get(), nullptr, NULL, nullptr, &bytesAvailable, nullptr));
-    // "The _open_osfhandle call transfers ownership of the Win32 file handle to the file descriptor."
-    // (https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/open-osfhandle?view=vs-2019)
-    // so, we detach_from_smart_pointer it -- but...
-    // "File descriptors passed into _fdopen are owned by the returned FILE * stream.
-    // If _fdopen is successful, do not call _close on the file descriptor.
-    // Calling fclose on the returned FILE * also closes the file descriptor."
-    // https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/fdopen-wfdopen?view=vs-2019
-    FILE* stdioPipeHandle = _wfdopen(_open_osfhandle((intptr_t)wil::detach_from_smart_pointer(readPipe), _O_WTEXT | _O_RDONLY), L"r");
-    auto closeFile = wil::scope_exit([&]() { fclose(stdioPipeHandle); });
-
-    std::wfstream pipe{ stdioPipeHandle };
-
-    std::wstring wline;
-    std::getline(pipe, wline); // remove the header from the output.
-    while (pipe.tellp() < bytesAvailable)
-    {
-        std::getline(pipe, wline);
-        std::wstringstream wlinestream(wline);
-        if (wlinestream)
-        {
-            std::wstring distName;
-            std::getline(wlinestream, distName, L'\r');
-
-            if (til::starts_with(distName, DockerDistributionPrefix))
-            {
-                // Docker for Windows creates some utility distributions to handle Docker commands.
-                // Pursuant to GH#3556, because they are _not_ user-facing we want to hide them.
-                continue;
-            }
-
-            const size_t firstChar = distName.find_first_of(L"( ");
-            // Some localizations don't have a space between the name and "(Default)"
-            // https://github.com/microsoft/terminal/issues/1168#issuecomment-500187109
-            if (firstChar < distName.size())
-            {
-                distName.resize(firstChar);
-            }
-
-            profiles.emplace_back(makeProfile(distName));
-        }
-    }
 }
 
 // Function Description:
@@ -154,9 +81,9 @@ static void namesToProfiles(const std::vector<std::wstring>& names, std::vector<
 {
     for (const auto& distName : names)
     {
-        if (til::starts_with(distName, DockerDistributionPrefix))
+        if (til::starts_with(distName, DockerDistributionPrefix) || til::starts_with(distName, RancherDistributionPrefix))
         {
-            // Docker for Windows creates some utility distributions to handle Docker commands.
+            // Docker for Windows and Rancher for Windows creates some utility distributions to handle Docker commands.
             // Pursuant to GH#3556, because they are _not_ user-facing we want to hide them.
             continue;
         }
@@ -257,22 +184,26 @@ static bool getWslNames(const wil::unique_hkey& wslRootKey,
     }
     for (const auto& guid : guidStrings)
     {
-        wil::unique_hkey distroKey{ openDistroKey(wslRootKey, guid) };
+        auto distroKey{ openDistroKey(wslRootKey, guid) };
         if (!distroKey)
+        {
+            continue;
+        }
+
+        const auto modernValue{ wil::reg::try_get_value<uint32_t>(distroKey.get(), RegKeyModern) };
+        if (modernValue.value_or(0u) == 1u)
         {
             continue;
         }
 
         std::wstring buffer;
         auto result = wil::AdaptFixedSizeToAllocatedResult<std::wstring, 256>(buffer, [&](PWSTR value, size_t valueLength, size_t* valueLengthNeededWithNull) -> HRESULT {
-            auto length = static_cast<DWORD>(valueLength);
+            auto length = gsl::narrow<DWORD>(valueLength * sizeof(wchar_t));
             const auto status = RegQueryValueExW(distroKey.get(), RegKeyDistroName, 0, nullptr, reinterpret_cast<BYTE*>(value), &length);
-            // length will receive the number of bytes - convert to a number of
-            // wchar_t's. AdaptFixedSizeToAllocatedResult will resize buffer to
-            // valueLengthNeededWithNull
-            *valueLengthNeededWithNull = (length / sizeof(wchar_t));
-            // If you add one for another trailing null, then there'll actually
-            // be _two_ trailing nulls in the buffer.
+            // length will receive the number of bytes including trailing null byte. Convert to a number of wchar_t's.
+            // AdaptFixedSizeToAllocatedResult will then resize buffer to valueLengthNeededWithNull.
+            // We're rounding up to prevent infinite loops if the data isn't a REG_SZ and length isn't divisible by 2.
+            *valueLengthNeededWithNull = (length + sizeof(wchar_t) - 1) / sizeof(wchar_t);
             return status == ERROR_MORE_DATA ? S_OK : HRESULT_FROM_WIN32(status);
         });
 
@@ -288,16 +219,16 @@ static bool getWslNames(const wil::unique_hkey& wslRootKey,
 // Method Description:
 // - Generate a list of profiles for each on the installed WSL distros. This
 //   will first try to read the installed distros from the registry. If that
-//   fails, we'll fall back to the legacy way of launching WSL.exe to read the
-//   distros from the commandline. Reading the registry is slightly more stable
-//   (see GH#7199, GH#9905), but it is certainly BODGY
+//   fails, we'll assume there are no WSL distributions installed.
+//   Reading the registry is slightly more stable (see GH#7199, GH#9905),
+//   but it is certainly BODGY
 // Arguments:
 // - <none>
 // Return Value:
 // - A list of WSL profiles.
 void WslDistroGenerator::GenerateProfiles(std::vector<winrt::com_ptr<implementation::Profile>>& profiles) const
 {
-    wil::unique_hkey wslRootKey{ openWslRegKey() };
+    auto wslRootKey{ openWslRegKey() };
     if (wslRootKey)
     {
         std::vector<std::wstring> guidStrings{};
@@ -311,6 +242,4 @@ void WslDistroGenerator::GenerateProfiles(std::vector<winrt::com_ptr<implementat
             }
         }
     }
-
-    legacyGenerate(profiles);
 }

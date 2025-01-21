@@ -27,263 +27,23 @@ static constexpr std::array<til::color, 16> campbellColorTable{
     til::color{ 0xF2, 0xF2, 0xF2 },
 };
 
-static constexpr std::array<til::color, 256> standardXterm256ColorTable{
+static constexpr std::array<til::color, 16> vt340ColorTable{
     til::color{ 0x00, 0x00, 0x00 },
-    til::color{ 0x80, 0x00, 0x00 },
-    til::color{ 0x00, 0x80, 0x00 },
-    til::color{ 0x80, 0x80, 0x00 },
-    til::color{ 0x00, 0x00, 0x80 },
-    til::color{ 0x80, 0x00, 0x80 },
-    til::color{ 0x00, 0x80, 0x80 },
-    til::color{ 0xC0, 0xC0, 0xC0 },
-    til::color{ 0x80, 0x80, 0x80 },
-    til::color{ 0xFF, 0x00, 0x00 },
-    til::color{ 0x00, 0xFF, 0x00 },
-    til::color{ 0xFF, 0xFF, 0x00 },
-    til::color{ 0x00, 0x00, 0xFF },
-    til::color{ 0xFF, 0x00, 0xFF },
-    til::color{ 0x00, 0xFF, 0xFF },
-    til::color{ 0xFF, 0xFF, 0xFF },
-    til::color{ 0x00, 0x00, 0x00 },
-    til::color{ 0x00, 0x00, 0x5F },
-    til::color{ 0x00, 0x00, 0x87 },
-    til::color{ 0x00, 0x00, 0xAF },
-    til::color{ 0x00, 0x00, 0xD7 },
-    til::color{ 0x00, 0x00, 0xFF },
-    til::color{ 0x00, 0x5F, 0x00 },
-    til::color{ 0x00, 0x5F, 0x5F },
-    til::color{ 0x00, 0x5F, 0x87 },
-    til::color{ 0x00, 0x5F, 0xAF },
-    til::color{ 0x00, 0x5F, 0xD7 },
-    til::color{ 0x00, 0x5F, 0xFF },
-    til::color{ 0x00, 0x87, 0x00 },
-    til::color{ 0x00, 0x87, 0x5F },
-    til::color{ 0x00, 0x87, 0x87 },
-    til::color{ 0x00, 0x87, 0xAF },
-    til::color{ 0x00, 0x87, 0xD7 },
-    til::color{ 0x00, 0x87, 0xFF },
-    til::color{ 0x00, 0xAF, 0x00 },
-    til::color{ 0x00, 0xAF, 0x5F },
-    til::color{ 0x00, 0xAF, 0x87 },
-    til::color{ 0x00, 0xAF, 0xAF },
-    til::color{ 0x00, 0xAF, 0xD7 },
-    til::color{ 0x00, 0xAF, 0xFF },
-    til::color{ 0x00, 0xD7, 0x00 },
-    til::color{ 0x00, 0xD7, 0x5F },
-    til::color{ 0x00, 0xD7, 0x87 },
-    til::color{ 0x00, 0xD7, 0xAF },
-    til::color{ 0x00, 0xD7, 0xD7 },
-    til::color{ 0x00, 0xD7, 0xFF },
-    til::color{ 0x00, 0xFF, 0x00 },
-    til::color{ 0x00, 0xFF, 0x5F },
-    til::color{ 0x00, 0xFF, 0x87 },
-    til::color{ 0x00, 0xFF, 0xAF },
-    til::color{ 0x00, 0xFF, 0xD7 },
-    til::color{ 0x00, 0xFF, 0xFF },
-    til::color{ 0x5F, 0x00, 0x00 },
-    til::color{ 0x5F, 0x00, 0x5F },
-    til::color{ 0x5F, 0x00, 0x87 },
-    til::color{ 0x5F, 0x00, 0xAF },
-    til::color{ 0x5F, 0x00, 0xD7 },
-    til::color{ 0x5F, 0x00, 0xFF },
-    til::color{ 0x5F, 0x5F, 0x00 },
-    til::color{ 0x5F, 0x5F, 0x5F },
-    til::color{ 0x5F, 0x5F, 0x87 },
-    til::color{ 0x5F, 0x5F, 0xAF },
-    til::color{ 0x5F, 0x5F, 0xD7 },
-    til::color{ 0x5F, 0x5F, 0xFF },
-    til::color{ 0x5F, 0x87, 0x00 },
-    til::color{ 0x5F, 0x87, 0x5F },
-    til::color{ 0x5F, 0x87, 0x87 },
-    til::color{ 0x5F, 0x87, 0xAF },
-    til::color{ 0x5F, 0x87, 0xD7 },
-    til::color{ 0x5F, 0x87, 0xFF },
-    til::color{ 0x5F, 0xAF, 0x00 },
-    til::color{ 0x5F, 0xAF, 0x5F },
-    til::color{ 0x5F, 0xAF, 0x87 },
-    til::color{ 0x5F, 0xAF, 0xAF },
-    til::color{ 0x5F, 0xAF, 0xD7 },
-    til::color{ 0x5F, 0xAF, 0xFF },
-    til::color{ 0x5F, 0xD7, 0x00 },
-    til::color{ 0x5F, 0xD7, 0x5F },
-    til::color{ 0x5F, 0xD7, 0x87 },
-    til::color{ 0x5F, 0xD7, 0xAF },
-    til::color{ 0x5F, 0xD7, 0xD7 },
-    til::color{ 0x5F, 0xD7, 0xFF },
-    til::color{ 0x5F, 0xFF, 0x00 },
-    til::color{ 0x5F, 0xFF, 0x5F },
-    til::color{ 0x5F, 0xFF, 0x87 },
-    til::color{ 0x5F, 0xFF, 0xAF },
-    til::color{ 0x5F, 0xFF, 0xD7 },
-    til::color{ 0x5F, 0xFF, 0xFF },
-    til::color{ 0x87, 0x00, 0x00 },
-    til::color{ 0x87, 0x00, 0x5F },
-    til::color{ 0x87, 0x00, 0x87 },
-    til::color{ 0x87, 0x00, 0xAF },
-    til::color{ 0x87, 0x00, 0xD7 },
-    til::color{ 0x87, 0x00, 0xFF },
-    til::color{ 0x87, 0x5F, 0x00 },
-    til::color{ 0x87, 0x5F, 0x5F },
-    til::color{ 0x87, 0x5F, 0x87 },
-    til::color{ 0x87, 0x5F, 0xAF },
-    til::color{ 0x87, 0x5F, 0xD7 },
-    til::color{ 0x87, 0x5F, 0xFF },
-    til::color{ 0x87, 0x87, 0x00 },
-    til::color{ 0x87, 0x87, 0x5F },
-    til::color{ 0x87, 0x87, 0x87 },
-    til::color{ 0x87, 0x87, 0xAF },
-    til::color{ 0x87, 0x87, 0xD7 },
-    til::color{ 0x87, 0x87, 0xFF },
-    til::color{ 0x87, 0xAF, 0x00 },
-    til::color{ 0x87, 0xAF, 0x5F },
-    til::color{ 0x87, 0xAF, 0x87 },
-    til::color{ 0x87, 0xAF, 0xAF },
-    til::color{ 0x87, 0xAF, 0xD7 },
-    til::color{ 0x87, 0xAF, 0xFF },
-    til::color{ 0x87, 0xD7, 0x00 },
-    til::color{ 0x87, 0xD7, 0x5F },
-    til::color{ 0x87, 0xD7, 0x87 },
-    til::color{ 0x87, 0xD7, 0xAF },
-    til::color{ 0x87, 0xD7, 0xD7 },
-    til::color{ 0x87, 0xD7, 0xFF },
-    til::color{ 0x87, 0xFF, 0x00 },
-    til::color{ 0x87, 0xFF, 0x5F },
-    til::color{ 0x87, 0xFF, 0x87 },
-    til::color{ 0x87, 0xFF, 0xAF },
-    til::color{ 0x87, 0xFF, 0xD7 },
-    til::color{ 0x87, 0xFF, 0xFF },
-    til::color{ 0xAF, 0x00, 0x00 },
-    til::color{ 0xAF, 0x00, 0x5F },
-    til::color{ 0xAF, 0x00, 0x87 },
-    til::color{ 0xAF, 0x00, 0xAF },
-    til::color{ 0xAF, 0x00, 0xD7 },
-    til::color{ 0xAF, 0x00, 0xFF },
-    til::color{ 0xAF, 0x5F, 0x00 },
-    til::color{ 0xAF, 0x5F, 0x5F },
-    til::color{ 0xAF, 0x5F, 0x87 },
-    til::color{ 0xAF, 0x5F, 0xAF },
-    til::color{ 0xAF, 0x5F, 0xD7 },
-    til::color{ 0xAF, 0x5F, 0xFF },
-    til::color{ 0xAF, 0x87, 0x00 },
-    til::color{ 0xAF, 0x87, 0x5F },
-    til::color{ 0xAF, 0x87, 0x87 },
-    til::color{ 0xAF, 0x87, 0xAF },
-    til::color{ 0xAF, 0x87, 0xD7 },
-    til::color{ 0xAF, 0x87, 0xFF },
-    til::color{ 0xAF, 0xAF, 0x00 },
-    til::color{ 0xAF, 0xAF, 0x5F },
-    til::color{ 0xAF, 0xAF, 0x87 },
-    til::color{ 0xAF, 0xAF, 0xAF },
-    til::color{ 0xAF, 0xAF, 0xD7 },
-    til::color{ 0xAF, 0xAF, 0xFF },
-    til::color{ 0xAF, 0xD7, 0x00 },
-    til::color{ 0xAF, 0xD7, 0x5F },
-    til::color{ 0xAF, 0xD7, 0x87 },
-    til::color{ 0xAF, 0xD7, 0xAF },
-    til::color{ 0xAF, 0xD7, 0xD7 },
-    til::color{ 0xAF, 0xD7, 0xFF },
-    til::color{ 0xAF, 0xFF, 0x00 },
-    til::color{ 0xAF, 0xFF, 0x5F },
-    til::color{ 0xAF, 0xFF, 0x87 },
-    til::color{ 0xAF, 0xFF, 0xAF },
-    til::color{ 0xAF, 0xFF, 0xD7 },
-    til::color{ 0xAF, 0xFF, 0xFF },
-    til::color{ 0xD7, 0x00, 0x00 },
-    til::color{ 0xD7, 0x00, 0x5F },
-    til::color{ 0xD7, 0x00, 0x87 },
-    til::color{ 0xD7, 0x00, 0xAF },
-    til::color{ 0xD7, 0x00, 0xD7 },
-    til::color{ 0xD7, 0x00, 0xFF },
-    til::color{ 0xD7, 0x5F, 0x00 },
-    til::color{ 0xD7, 0x5F, 0x5F },
-    til::color{ 0xD7, 0x5F, 0x87 },
-    til::color{ 0xD7, 0x5F, 0xAF },
-    til::color{ 0xD7, 0x5F, 0xD7 },
-    til::color{ 0xD7, 0x5F, 0xFF },
-    til::color{ 0xD7, 0x87, 0x00 },
-    til::color{ 0xD7, 0x87, 0x5F },
-    til::color{ 0xD7, 0x87, 0x87 },
-    til::color{ 0xD7, 0x87, 0xAF },
-    til::color{ 0xD7, 0x87, 0xD7 },
-    til::color{ 0xD7, 0x87, 0xFF },
-    til::color{ 0xD7, 0xAF, 0x00 },
-    til::color{ 0xD7, 0xAF, 0x5F },
-    til::color{ 0xD7, 0xAF, 0x87 },
-    til::color{ 0xD7, 0xAF, 0xAF },
-    til::color{ 0xD7, 0xAF, 0xD7 },
-    til::color{ 0xD7, 0xAF, 0xFF },
-    til::color{ 0xD7, 0xD7, 0x00 },
-    til::color{ 0xD7, 0xD7, 0x5F },
-    til::color{ 0xD7, 0xD7, 0x87 },
-    til::color{ 0xD7, 0xD7, 0xAF },
-    til::color{ 0xD7, 0xD7, 0xD7 },
-    til::color{ 0xD7, 0xD7, 0xFF },
-    til::color{ 0xD7, 0xFF, 0x00 },
-    til::color{ 0xD7, 0xFF, 0x5F },
-    til::color{ 0xD7, 0xFF, 0x87 },
-    til::color{ 0xD7, 0xFF, 0xAF },
-    til::color{ 0xD7, 0xFF, 0xD7 },
-    til::color{ 0xD7, 0xFF, 0xFF },
-    til::color{ 0xFF, 0x00, 0x00 },
-    til::color{ 0xFF, 0x00, 0x5F },
-    til::color{ 0xFF, 0x00, 0x87 },
-    til::color{ 0xFF, 0x00, 0xAF },
-    til::color{ 0xFF, 0x00, 0xD7 },
-    til::color{ 0xFF, 0x00, 0xFF },
-    til::color{ 0xFF, 0x5F, 0x00 },
-    til::color{ 0xFF, 0x5F, 0x5F },
-    til::color{ 0xFF, 0x5F, 0x87 },
-    til::color{ 0xFF, 0x5F, 0xAF },
-    til::color{ 0xFF, 0x5F, 0xD7 },
-    til::color{ 0xFF, 0x5F, 0xFF },
-    til::color{ 0xFF, 0x87, 0x00 },
-    til::color{ 0xFF, 0x87, 0x5F },
-    til::color{ 0xFF, 0x87, 0x87 },
-    til::color{ 0xFF, 0x87, 0xAF },
-    til::color{ 0xFF, 0x87, 0xD7 },
-    til::color{ 0xFF, 0x87, 0xFF },
-    til::color{ 0xFF, 0xAF, 0x00 },
-    til::color{ 0xFF, 0xAF, 0x5F },
-    til::color{ 0xFF, 0xAF, 0x87 },
-    til::color{ 0xFF, 0xAF, 0xAF },
-    til::color{ 0xFF, 0xAF, 0xD7 },
-    til::color{ 0xFF, 0xAF, 0xFF },
-    til::color{ 0xFF, 0xD7, 0x00 },
-    til::color{ 0xFF, 0xD7, 0x5F },
-    til::color{ 0xFF, 0xD7, 0x87 },
-    til::color{ 0xFF, 0xD7, 0xAF },
-    til::color{ 0xFF, 0xD7, 0xD7 },
-    til::color{ 0xFF, 0xD7, 0xFF },
-    til::color{ 0xFF, 0xFF, 0x00 },
-    til::color{ 0xFF, 0xFF, 0x5F },
-    til::color{ 0xFF, 0xFF, 0x87 },
-    til::color{ 0xFF, 0xFF, 0xAF },
-    til::color{ 0xFF, 0xFF, 0xD7 },
-    til::color{ 0xFF, 0xFF, 0xFF },
-    til::color{ 0x08, 0x08, 0x08 },
-    til::color{ 0x12, 0x12, 0x12 },
-    til::color{ 0x1C, 0x1C, 0x1C },
-    til::color{ 0x26, 0x26, 0x26 },
-    til::color{ 0x30, 0x30, 0x30 },
-    til::color{ 0x3A, 0x3A, 0x3A },
-    til::color{ 0x44, 0x44, 0x44 },
-    til::color{ 0x4E, 0x4E, 0x4E },
-    til::color{ 0x58, 0x58, 0x58 },
-    til::color{ 0x62, 0x62, 0x62 },
-    til::color{ 0x6C, 0x6C, 0x6C },
-    til::color{ 0x76, 0x76, 0x76 },
-    til::color{ 0x80, 0x80, 0x80 },
-    til::color{ 0x8A, 0x8A, 0x8A },
-    til::color{ 0x94, 0x94, 0x94 },
-    til::color{ 0x9E, 0x9E, 0x9E },
-    til::color{ 0xA8, 0xA8, 0xA8 },
-    til::color{ 0xB2, 0xB2, 0xB2 },
-    til::color{ 0xBC, 0xBC, 0xBC },
-    til::color{ 0xC6, 0xC6, 0xC6 },
-    til::color{ 0xD0, 0xD0, 0xD0 },
-    til::color{ 0xDA, 0xDA, 0xDA },
-    til::color{ 0xE4, 0xE4, 0xE4 },
-    til::color{ 0xEE, 0xEE, 0xEE },
+    til::color{ 0x33, 0x33, 0xCC },
+    til::color{ 0xCC, 0x24, 0x24 },
+    til::color{ 0x33, 0xCC, 0x33 },
+    til::color{ 0xCC, 0x33, 0xCC },
+    til::color{ 0x33, 0xCC, 0xCC },
+    til::color{ 0xCC, 0xCC, 0x33 },
+    til::color{ 0x78, 0x78, 0x78 },
+    til::color{ 0x45, 0x45, 0x45 },
+    til::color{ 0x57, 0x57, 0x99 },
+    til::color{ 0x99, 0x45, 0x45 },
+    til::color{ 0x57, 0x99, 0x57 },
+    til::color{ 0x99, 0x57, 0x99 },
+    til::color{ 0x57, 0x99, 0x99 },
+    til::color{ 0x99, 0x99, 0x57 },
+    til::color{ 0xCC, 0xCC, 0xCC },
 };
 
 static constexpr til::presorted_static_map xorgAppVariantColorTable{
@@ -454,74 +214,75 @@ static constexpr til::presorted_static_map xorgAppColorTable{
     std::pair{ "yellowgreen"sv, til::color{ 154, 205, 50 } }
 };
 
-// Function Description:
-// - Fill the first 16 entries of a given color table with the Campbell color
-//   scheme, in the ANSI/VT RGB order.
-// Arguments:
-// - table: a color table with at least 16 entries
-// Return Value:
-// - <none>, throws if the table has less that 16 entries
-void Utils::InitializeCampbellColorTable(const gsl::span<COLORREF> table)
+std::span<const til::color> Utils::CampbellColorTable() noexcept
 {
-    THROW_HR_IF(E_INVALIDARG, table.size() < 16);
-
-    std::copy(campbellColorTable.begin(), campbellColorTable.end(), table.begin());
-}
-
-void Utils::InitializeCampbellColorTable(const gsl::span<til::color> table)
-{
-    THROW_HR_IF(E_INVALIDARG, table.size() < 16);
-
-    std::copy(campbellColorTable.begin(), campbellColorTable.end(), table.begin());
-}
-
-gsl::span<const til::color> Utils::CampbellColorTable()
-{
-    return gsl::make_span(campbellColorTable);
+    return std::span{ campbellColorTable };
 }
 
 // Function Description:
-// - Fill the first 16 entries of a given color table with the Campbell color
-//   scheme, in the Windows BGR order.
+// - Fill up to 256 entries of a given color table with the default values
 // Arguments:
-// - table: a color table with at least 16 entries
+// - table: a color table to be filled
 // Return Value:
-// - <none>, throws if the table has less that 16 entries
-void Utils::InitializeCampbellColorTableForConhost(const gsl::span<COLORREF> table)
+// - <none>
+void Utils::InitializeColorTable(const std::span<COLORREF> table) noexcept
 {
-    THROW_HR_IF(E_INVALIDARG, table.size() < 16);
-    InitializeCampbellColorTable(table);
-    SwapANSIColorOrderForConhost(table);
+    InitializeANSIColorTable(table);
+    InitializeExtendedColorTable(table);
 }
+
+void Utils::InitializeANSIColorTable(const std::span<COLORREF> table) noexcept
+{
+    if (table.size() >= campbellColorTable.size())
+    {
+        std::copy_n(campbellColorTable.begin(), campbellColorTable.size(), table.begin());
+    }
+}
+
+void Utils::InitializeVT340ColorTable(const std::span<COLORREF> table) noexcept
+{
+    if (table.size() >= vt340ColorTable.size())
+    {
+        std::copy_n(vt340ColorTable.begin(), vt340ColorTable.size(), table.begin());
+    }
+}
+
+#pragma warning(push)
+#pragma warning(disable : 26497) // This is a false positive in audit mode.
 
 // Function Description:
-// - modifies in-place the given color table from ANSI (RGB) order to Console order (BRG).
+// - Fill color table entries from 16 to 255 with the default colors used by
+//   modern terminals. This includes a range of colors from a 6x6x6 color cube
+//   for entries 16 to 231, and 24 shades of gray for entries 232 to 255.
 // Arguments:
-// - table: a color table with at least 16 entries
+// - table: a color table to be filled
 // Return Value:
-// - <none>, throws if the table has less that 16 entries
-void Utils::SwapANSIColorOrderForConhost(const gsl::span<COLORREF> table)
+// - <none>
+void Utils::InitializeExtendedColorTable(const std::span<COLORREF> table, const bool monochrome) noexcept
 {
-    THROW_HR_IF(E_INVALIDARG, table.size() < 16);
-    std::swap(til::at(table, 1), til::at(table, 4));
-    std::swap(til::at(table, 3), til::at(table, 6));
-    std::swap(til::at(table, 9), til::at(table, 12));
-    std::swap(til::at(table, 11), til::at(table, 14));
+    if (table.size() >= 256)
+    {
+        for (size_t i = 0; i < 216; i++)
+        {
+            constexpr auto scale = std::array<uint8_t, 6>{ 0, 0x5F, 0x87, 0xAF, 0xD7, 0xFF };
+            auto r = til::at(scale, (i / 36) % 6);
+            auto g = til::at(scale, (i / 6) % 6);
+            auto b = til::at(scale, i % 6);
+            if (monochrome)
+            {
+                r = g = b = (r + g + b) / 3;
+            }
+            til::at(table, i + 16) = til::color{ r, g, b };
+        }
+        for (size_t i = 0; i < 24; i++)
+        {
+            const auto l = gsl::narrow_cast<uint8_t>(i * 10 + 8);
+            til::at(table, i + 232) = til::color{ l, l, l };
+        }
+    }
 }
 
-// Function Description:
-// - Fill the first 255 entries of a given color table with the default values
-//      of a full 256-color table
-// Arguments:
-// - table: a color table with at least 256 entries
-// Return Value:
-// - <none>, throws if the table has less that 256 entries
-void Utils::Initialize256ColorTable(const gsl::span<COLORREF> table)
-{
-    THROW_HR_IF(E_INVALIDARG, table.size() < 256);
-
-    std::copy(standardXterm256ColorTable.begin(), standardXterm256ColorTable.end(), table.begin());
-}
+#pragma warning(pop)
 
 #pragma warning(push)
 #pragma warning(disable : 26447) // This is a false positive.
@@ -535,10 +296,10 @@ void Utils::Initialize256ColorTable(const gsl::span<COLORREF> table)
 std::optional<til::color> Utils::ColorFromXOrgAppColorName(const std::wstring_view wstr) noexcept
 try
 {
-    std::stringstream ss;
+    std::string stem;
     size_t variantIndex = 0;
-    bool foundVariant = false;
-    for (const wchar_t c : wstr)
+    auto foundVariant = false;
+    for (const auto c : wstr)
     {
         // X11 guarantees that characters are all Latin1.
         // Return early if an invalid character is seen.
@@ -556,7 +317,7 @@ try
         }
 
         // Ignore spaces.
-        if (std::iswspace(c))
+        if (c == L' ' || c == L'\f' || c == L'\n' || c == L'\r' || c == L'\t' || c == L'\v')
         {
             continue;
         }
@@ -569,11 +330,10 @@ try
             return std::nullopt;
         }
 
-        ss << gsl::narrow_cast<char>(std::towlower(c));
+        stem += gsl::narrow_cast<char>(til::tolower_ascii(c));
     }
 
-    std::string name(ss.str());
-    const auto variantColorIter = xorgAppVariantColorTable.find(name);
+    const auto variantColorIter = xorgAppVariantColorTable.find(stem);
     if (variantColorIter != xorgAppVariantColorTable.end())
     {
         const auto colors = variantColorIter->second;
@@ -584,7 +344,7 @@ try
     }
 
     // Calculate the color value for gray0 - gray99.
-    if ((name == "gray" || name == "grey") && foundVariant)
+    if ((stem == "gray" || stem == "grey") && foundVariant)
     {
         if (variantIndex > 100) // size_t is unsigned, so >=0 is implicit
         {
@@ -594,7 +354,7 @@ try
         return til::color{ component, component, component };
     }
 
-    const auto colorIter = xorgAppColorTable.find(name);
+    const auto colorIter = xorgAppColorTable.find(stem);
     if (colorIter != xorgAppColorTable.end())
     {
         return colorIter->second;

@@ -46,15 +46,15 @@ Author(s):
 
 #include "Profile.g.h"
 #include "IInheritable.h"
+#include "MTSMSettings.h"
 
-#include "../inc/cppwinrt_utils.h"
 #include "JsonUtils.h"
 #include <DefaultSettings.h>
 #include "AppearanceConfig.h"
 #include "FontConfig.h"
 
 // fwdecl unittest classes
-namespace SettingsModelLocalTests
+namespace SettingsModelUnitTests
 {
     class DeserializationTests;
     class ProfileTests;
@@ -66,6 +66,8 @@ namespace TerminalAppUnitTests
     class DynamicProfileTests;
     class JsonTests;
 };
+
+using IEnvironmentVariableMap = winrt::Windows::Foundation::Collections::IMap<winrt::hstring, winrt::hstring>;
 
 // GUID used for generating GUIDs at runtime, for profiles that did not have a
 // GUID specified manually.
@@ -100,57 +102,67 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         Model::IAppearanceConfig DefaultAppearance();
         Model::FontConfig FontInfo();
 
+        static std::wstring NormalizeCommandLine(LPCWSTR commandLine);
+
         void _FinalizeInheritance() override;
 
-        WINRT_PROPERTY(bool, Deleted, false);
-        WINRT_PROPERTY(OriginTag, Origin, OriginTag::None);
+        void LogSettingChanges(std::set<std::string>& changes, const std::string_view& context) const;
 
+        // EvaluatedIcon depends on Icon. It allows us to grab the
+        //   icon from an exe path.
+        // As a result, we can't use the INHERITABLE_SETTING macro for Icon,
+        //   as we manually have to set/unset _evaluatedIcon when Icon changes.
+        winrt::hstring EvaluatedIcon();
+        hstring Icon() const;
+        void Icon(const hstring& value);
+        bool HasIcon() const;
+        Model::Profile IconOverrideSource();
+        void ClearIcon();
+
+        WINRT_PROPERTY(bool, Deleted, false);
+        WINRT_PROPERTY(bool, Orphaned, false);
+        WINRT_PROPERTY(OriginTag, Origin, OriginTag::None);
         WINRT_PROPERTY(guid, Updates);
-        INHERITABLE_SETTING(Model::Profile, guid, Guid, _GenerateGuidForProfile(Name(), Source()));
+
+        // Nullable/optional settings
+        INHERITABLE_NULLABLE_SETTING(Model::Profile, Microsoft::Terminal::Core::Color, TabColor, nullptr);
+        INHERITABLE_SETTING(Model::Profile, Model::IAppearanceConfig, UnfocusedAppearance, nullptr);
+
+        // Settings that cannot be put in the macro because of how they are handled in ToJson/LayerJson
         INHERITABLE_SETTING(Model::Profile, hstring, Name, L"Default");
         INHERITABLE_SETTING(Model::Profile, hstring, Source);
         INHERITABLE_SETTING(Model::Profile, bool, Hidden, false);
-        INHERITABLE_SETTING(Model::Profile, guid, ConnectionType);
-
-        // Default Icon: Segoe MDL2 CommandPrompt icon
-        INHERITABLE_SETTING(Model::Profile, hstring, Icon, L"\uE756");
-
-        INHERITABLE_SETTING(Model::Profile, CloseOnExitMode, CloseOnExit, CloseOnExitMode::Graceful);
-        INHERITABLE_SETTING(Model::Profile, hstring, TabTitle);
-        INHERITABLE_NULLABLE_SETTING(Model::Profile, Microsoft::Terminal::Core::Color, TabColor, nullptr);
-        INHERITABLE_SETTING(Model::Profile, bool, SuppressApplicationTitle, false);
-
-        INHERITABLE_SETTING(Model::Profile, bool, UseAcrylic, false);
-        INHERITABLE_SETTING(Model::Profile, Microsoft::Terminal::Control::ScrollbarState, ScrollState, Microsoft::Terminal::Control::ScrollbarState::Visible);
-
+        INHERITABLE_SETTING(Model::Profile, guid, Guid, _GenerateGuidForProfile(Name(), Source()));
         INHERITABLE_SETTING(Model::Profile, hstring, Padding, DEFAULT_PADDING);
 
-        INHERITABLE_SETTING(Model::Profile, hstring, Commandline, L"cmd.exe");
-        INHERITABLE_SETTING(Model::Profile, hstring, StartingDirectory);
-
-        INHERITABLE_SETTING(Model::Profile, Microsoft::Terminal::Control::TextAntialiasingMode, AntialiasingMode, Microsoft::Terminal::Control::TextAntialiasingMode::Grayscale);
-        INHERITABLE_SETTING(Model::Profile, bool, ForceFullRepaintRendering, false);
-        INHERITABLE_SETTING(Model::Profile, bool, SoftwareRendering, false);
-
-        INHERITABLE_SETTING(Model::Profile, int32_t, HistorySize, DEFAULT_HISTORY_SIZE);
-        INHERITABLE_SETTING(Model::Profile, bool, SnapOnInput, true);
-        INHERITABLE_SETTING(Model::Profile, bool, AltGrAliasing, true);
-
-        INHERITABLE_SETTING(Model::Profile, Model::BellStyle, BellStyle, BellStyle::Audible);
-
-        INHERITABLE_SETTING(Model::Profile, Model::IAppearanceConfig, UnfocusedAppearance, nullptr);
+    public:
+#define PROFILE_SETTINGS_INITIALIZE(type, name, jsonKey, ...) \
+    INHERITABLE_SETTING_WITH_LOGGING(Model::Profile, type, name, jsonKey, ##__VA_ARGS__)
+        MTSM_PROFILE_SETTINGS(PROFILE_SETTINGS_INITIALIZE)
+#undef PROFILE_SETTINGS_INITIALIZE
 
     private:
         Model::IAppearanceConfig _DefaultAppearance{ winrt::make<AppearanceConfig>(weak_ref<Model::Profile>(*this)) };
         Model::FontConfig _FontInfo{ winrt::make<FontConfig>(weak_ref<Model::Profile>(*this)) };
+
+        std::optional<hstring> _Icon{ std::nullopt };
+        std::optional<winrt::hstring> _evaluatedIcon{ std::nullopt };
+        std::set<std::string> _changeLog;
+
         static std::wstring EvaluateStartingDirectory(const std::wstring& directory);
 
         static guid _GenerateGuidForProfile(const std::wstring_view& name, const std::wstring_view& source) noexcept;
 
-        friend class SettingsModelLocalTests::DeserializationTests;
-        friend class SettingsModelLocalTests::ProfileTests;
-        friend class SettingsModelLocalTests::ColorSchemeTests;
-        friend class SettingsModelLocalTests::KeyBindingsTests;
+        winrt::hstring _evaluateIcon() const;
+        std::optional<hstring> _getIconImpl() const;
+        Model::Profile _getIconOverrideSourceImpl() const;
+        void _logSettingSet(const std::string_view& setting);
+        void _logSettingIfSet(const std::string_view& setting, const bool isSet);
+
+        friend class SettingsModelUnitTests::DeserializationTests;
+        friend class SettingsModelUnitTests::ProfileTests;
+        friend class SettingsModelUnitTests::ColorSchemeTests;
+        friend class SettingsModelUnitTests::KeyBindingsTests;
         friend class TerminalAppUnitTests::DynamicProfileTests;
         friend class TerminalAppUnitTests::JsonTests;
     };

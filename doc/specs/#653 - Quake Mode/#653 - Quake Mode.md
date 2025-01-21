@@ -714,7 +714,7 @@ Docs regarding hiding a window from the taskbar:
 ### Footnotes
 
 <a name="footnote-1"><a>[1]: Quitting the terminal is different than closing the
-windows one-by-one. Quiting implies an atomic action, for closing all the
+windows one-by-one. Quitting implies an atomic action, for closing all the
 windows. Once [#766] lands, this will give us a chance to persist the state of
 _all_ open windows. This will allow us to re-open with all the user's windows,
 not just the one that happened to be closed last.
@@ -730,7 +730,7 @@ user to differentiate between the two behaviors.
 [#5727]: https://github.com/microsoft/terminal/issues/5727
 [#9992]: https://github.com/microsoft/terminal/issues/9992
 
-[Process Model 2.0 Spec]: https://github.com/microsoft/terminal/blob/main/doc/specs/%235000%20-%20Process%20Model%202.0/%235000%20-%20Process%20Model%202.0.md
+[Process Model 2.0 Spec]: ../%235000%20-%20Process%20Model%202.0/%235000%20-%20Process%20Model%202.0.md
 [Quake 3 sample]: https://youtu.be/ZmR6HQbuHPA?t=27
 [`RegisterHotKey`]: https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-registerhotkey
 [`dev/migrie/f/653-QUAKE-MODE`]: https://github.com/microsoft/terminal/tree/dev/migrie/f/653-QUAKE-MODE

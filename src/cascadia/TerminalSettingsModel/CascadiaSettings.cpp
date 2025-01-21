@@ -5,10 +5,16 @@
 #include "CascadiaSettings.h"
 #include "CascadiaSettings.g.cpp"
 
+#include "DefaultTerminal.h"
 #include "FileUtils.h"
 
 #include <LibraryResources.h>
 #include <VersionHelpers.h>
+#include <WtExeUtils.h>
+
+#include <shellapi.h>
+#include <til/latch.h>
+#include <til/env.h>
 
 using namespace winrt::Microsoft::Terminal;
 using namespace winrt::Microsoft::Terminal::Settings;
@@ -17,15 +23,39 @@ using namespace winrt::Microsoft::Terminal::Control;
 using namespace winrt::Windows::Foundation::Collections;
 using namespace Microsoft::Console;
 
+// Creating a child of a profile requires us to copy certain
+// required attributes. This method handles those attributes.
+//
+// NOTE however that it doesn't call _FinalizeInheritance() for you! Don't forget that!
+//
+// At the time of writing only one caller needs to call _FinalizeInheritance(),
+// which is why this unsafety wasn't further abstracted away.
 winrt::com_ptr<Profile> Model::implementation::CreateChild(const winrt::com_ptr<Profile>& parent)
 {
+    // If you add more fields here, make sure to do the same in
+    // SettingsLoader::_addUserProfileParent().
     auto profile = winrt::make_self<Profile>();
     profile->Origin(OriginTag::User);
     profile->Name(parent->Name());
     profile->Guid(parent->Guid());
     profile->Hidden(parent->Hidden());
-    profile->InsertParent(parent);
+    profile->AddLeastImportantParent(parent);
     return profile;
+}
+
+std::string_view Model::implementation::LoadStringResource(int resourceID)
+{
+    const HINSTANCE moduleInstanceHandle{ wil::GetModuleInstanceHandle() };
+    const auto resource = FindResourceW(moduleInstanceHandle, MAKEINTRESOURCEW(resourceID), RT_RCDATA);
+    const auto loaded = LoadResource(moduleInstanceHandle, resource);
+    const auto sz = SizeofResource(moduleInstanceHandle, resource);
+    const auto ptr = LockResource(loaded);
+    return { reinterpret_cast<const char*>(ptr), sz };
+}
+
+winrt::hstring CascadiaSettings::Hash() const noexcept
+{
+    return _hash;
 }
 
 Model::CascadiaSettings CascadiaSettings::Copy() const
@@ -73,7 +103,7 @@ Model::CascadiaSettings CascadiaSettings::Copy() const
             for (const auto& profile : targetProfiles)
             {
                 allProfiles.emplace_back(*profile);
-                if (!profile->Hidden())
+                if (!profile->Hidden() && !profile->Orphaned())
                 {
                     activeProfiles.emplace_back(*profile);
                 }
@@ -194,7 +224,7 @@ Model::Profile CascadiaSettings::CreateNewProfile()
     for (uint32_t candidateIndex = 0, count = _allProfiles.Size() + 1; candidateIndex < count; candidateIndex++)
     {
         // There is a theoretical unsigned integer wraparound, which is OK
-        newName = fmt::format(L"Profile {}", count + candidateIndex);
+        newName = fmt::format(FMT_COMPILE(L"Profile {}"), count + candidateIndex);
         if (std::none_of(begin(_allProfiles), end(_allProfiles), [&](auto&& profile) { return profile.Name() == newName; }))
         {
             break;
@@ -205,6 +235,18 @@ Model::Profile CascadiaSettings::CreateNewProfile()
     _allProfiles.Append(*newProfile);
     _activeProfiles.Append(*newProfile);
     return *newProfile;
+}
+
+template<typename T>
+static bool isProfilesDefaultsOrigin(const T& profile)
+{
+    return profile && profile.Origin() != winrt::Microsoft::Terminal::Settings::Model::OriginTag::ProfilesDefaults;
+}
+
+template<typename T>
+static bool isProfilesDefaultsOriginSub(const T& sub)
+{
+    return sub && isProfilesDefaultsOrigin(sub.SourceProfile());
 }
 
 // Method Description:
@@ -223,7 +265,7 @@ Model::Profile CascadiaSettings::DuplicateProfile(const Model::Profile& source)
 {
     THROW_HR_IF_NULL(E_INVALIDARG, source);
 
-    auto newName = fmt::format(L"{} ({})", source.Name(), RS_(L"CopySuffix"));
+    auto newName = fmt::format(FMT_COMPILE(L"{} ({})"), source.Name(), RS_(L"CopySuffix"));
 
     // Check if this name already exists and if so, append a number
     for (uint32_t candidateIndex = 0, count = _allProfiles.Size() + 1; candidateIndex < count; ++candidateIndex)
@@ -233,18 +275,10 @@ Model::Profile CascadiaSettings::DuplicateProfile(const Model::Profile& source)
             break;
         }
         // There is a theoretical unsigned integer wraparound, which is OK
-        newName = fmt::format(L"{} ({} {})", source.Name(), RS_(L"CopySuffix"), candidateIndex + 2);
+        newName = fmt::format(FMT_COMPILE(L"{} ({} {})"), source.Name(), RS_(L"CopySuffix"), candidateIndex + 2);
     }
 
     const auto duplicated = _createNewProfile(newName);
-
-    static constexpr auto isProfilesDefaultsOrigin = [](const auto& profile) -> bool {
-        return profile && profile.Origin() != OriginTag::ProfilesDefaults;
-    };
-
-    static constexpr auto isProfilesDefaultsOriginSub = [](const auto& sub) -> bool {
-        return sub && isProfilesDefaultsOrigin(sub.SourceProfile());
-    };
 
 #define NEEDS_DUPLICATION(settingName) source.Has##settingName() || isProfilesDefaultsOrigin(source.settingName##OverrideSource())
 #define NEEDS_DUPLICATION_SUB(source, settingName) source.Has##settingName() || isProfilesDefaultsOriginSub(source.settingName##OverrideSource())
@@ -264,52 +298,47 @@ Model::Profile CascadiaSettings::DuplicateProfile(const Model::Profile& source)
     // If the source is hidden and the Settings UI creates a
     // copy of it we don't want the copy to be hidden as well.
     // --> Don't do DUPLICATE_SETTING_MACRO(Hidden);
-    DUPLICATE_SETTING_MACRO(Icon);
-    DUPLICATE_SETTING_MACRO(CloseOnExit);
-    DUPLICATE_SETTING_MACRO(TabTitle);
+
+#define DUPLICATE_PROFILE_SETTINGS(type, name, jsonKey, ...) \
+    DUPLICATE_SETTING_MACRO(name);
+
+    MTSM_PROFILE_SETTINGS(DUPLICATE_PROFILE_SETTINGS)
+#undef DUPLICATE_PROFILE_SETTINGS
+
+    // These aren't in MTSM_PROFILE_SETTINGS because they're special
     DUPLICATE_SETTING_MACRO(TabColor);
-    DUPLICATE_SETTING_MACRO(SuppressApplicationTitle);
-    DUPLICATE_SETTING_MACRO(UseAcrylic);
-    DUPLICATE_SETTING_MACRO(ScrollState);
     DUPLICATE_SETTING_MACRO(Padding);
-    DUPLICATE_SETTING_MACRO(Commandline);
-    DUPLICATE_SETTING_MACRO(StartingDirectory);
-    DUPLICATE_SETTING_MACRO(AntialiasingMode);
-    DUPLICATE_SETTING_MACRO(ForceFullRepaintRendering);
-    DUPLICATE_SETTING_MACRO(SoftwareRendering);
-    DUPLICATE_SETTING_MACRO(HistorySize);
-    DUPLICATE_SETTING_MACRO(SnapOnInput);
-    DUPLICATE_SETTING_MACRO(AltGrAliasing);
-    DUPLICATE_SETTING_MACRO(BellStyle);
+    DUPLICATE_SETTING_MACRO(Icon);
 
     {
         const auto font = source.FontInfo();
         const auto target = duplicated->FontInfo();
-        DUPLICATE_SETTING_MACRO_SUB(font, target, FontFace);
-        DUPLICATE_SETTING_MACRO_SUB(font, target, FontSize);
-        DUPLICATE_SETTING_MACRO_SUB(font, target, FontWeight);
-        DUPLICATE_SETTING_MACRO_SUB(font, target, FontFeatures);
-        DUPLICATE_SETTING_MACRO_SUB(font, target, FontAxes);
+
+#define DUPLICATE_FONT_SETTINGS(type, name, jsonKey, ...) \
+    DUPLICATE_SETTING_MACRO_SUB(font, target, name);
+
+        MTSM_FONT_SETTINGS(DUPLICATE_FONT_SETTINGS)
+#undef DUPLICATE_FONT_SETTINGS
     }
 
     {
         const auto appearance = source.DefaultAppearance();
         const auto target = duplicated->DefaultAppearance();
-        DUPLICATE_SETTING_MACRO_SUB(appearance, target, ColorSchemeName);
+
+#define DUPLICATE_APPEARANCE_SETTINGS(type, name, jsonKey, ...) \
+    DUPLICATE_SETTING_MACRO_SUB(appearance, target, name);
+
+        MTSM_APPEARANCE_SETTINGS(DUPLICATE_APPEARANCE_SETTINGS)
+#undef DUPLICATE_APPEARANCE_SETTINGS
+
+        // These aren't in MTSM_APPEARANCE_SETTINGS because they're special
         DUPLICATE_SETTING_MACRO_SUB(appearance, target, Foreground);
         DUPLICATE_SETTING_MACRO_SUB(appearance, target, Background);
         DUPLICATE_SETTING_MACRO_SUB(appearance, target, SelectionBackground);
         DUPLICATE_SETTING_MACRO_SUB(appearance, target, CursorColor);
-        DUPLICATE_SETTING_MACRO_SUB(appearance, target, PixelShaderPath);
-        DUPLICATE_SETTING_MACRO_SUB(appearance, target, IntenseTextStyle);
-        DUPLICATE_SETTING_MACRO_SUB(appearance, target, BackgroundImagePath);
-        DUPLICATE_SETTING_MACRO_SUB(appearance, target, BackgroundImageOpacity);
-        DUPLICATE_SETTING_MACRO_SUB(appearance, target, BackgroundImageStretchMode);
-        DUPLICATE_SETTING_MACRO_SUB(appearance, target, BackgroundImageAlignment);
-        DUPLICATE_SETTING_MACRO_SUB(appearance, target, RetroTerminalEffect);
-        DUPLICATE_SETTING_MACRO_SUB(appearance, target, CursorShape);
-        DUPLICATE_SETTING_MACRO_SUB(appearance, target, CursorHeight);
         DUPLICATE_SETTING_MACRO_SUB(appearance, target, Opacity);
+        DUPLICATE_SETTING_MACRO_SUB(appearance, target, DarkColorSchemeName);
+        DUPLICATE_SETTING_MACRO_SUB(appearance, target, LightColorSchemeName);
     }
 
     // UnfocusedAppearance is treated as a single setting,
@@ -325,12 +354,18 @@ Model::Profile CascadiaSettings::DuplicateProfile(const Model::Profile& source)
         // Make sure to add the default appearance of the duplicated profile as a parent to the duplicate's UnfocusedAppearance
         winrt::com_ptr<AppearanceConfig> defaultAppearance;
         defaultAppearance.copy_from(winrt::get_self<AppearanceConfig>(duplicated->DefaultAppearance()));
-        unfocusedAppearance->InsertParent(defaultAppearance);
+        unfocusedAppearance->AddLeastImportantParent(defaultAppearance);
 
         duplicated->UnfocusedAppearance(*unfocusedAppearance);
     }
 
-    if (source.HasConnectionType())
+    // GH#12120: Check if the connection type isn't just the default value. If
+    // it is, then we should copy it. The only case this applies right now is
+    // for the Azure Cloud Shell, which is the only thing that has a non-{}
+    // guid. The user's version of this profile won't have connectionType set,
+    // because it inherits the setting from the parent. If we fail to copy it
+    // here, they won't actually get a Azure shell profile.
+    if (source.ConnectionType() != winrt::guid{})
     {
         duplicated->ConnectionType(source.ConnectionType());
     }
@@ -370,6 +405,7 @@ winrt::com_ptr<Profile> CascadiaSettings::_createNewProfile(const std::wstring_v
     LOG_IF_FAILED(CoCreateGuid(&guid));
 
     auto profile = CreateChild(_baseLayerProfile);
+    profile->_FinalizeInheritance();
     profile->Guid(guid);
     profile->Name(winrt::hstring{ name });
     return profile;
@@ -391,6 +427,8 @@ void CascadiaSettings::_validateSettings()
     _validateMediaResources();
     _validateKeybindings();
     _validateColorSchemesInCommands();
+    _validateThemeExists();
+    _validateProfileEnvironmentVariables();
 }
 
 // Method Description:
@@ -406,22 +444,29 @@ void CascadiaSettings::_validateSettings()
 void CascadiaSettings::_validateAllSchemesExist()
 {
     const auto colorSchemes = _globals->ColorSchemes();
-    bool foundInvalidScheme = false;
+    auto foundInvalidDarkScheme = false;
+    auto foundInvalidLightScheme = false;
 
     for (const auto& profile : _allProfiles)
     {
         for (const auto& appearance : std::array{ profile.DefaultAppearance(), profile.UnfocusedAppearance() })
         {
-            if (appearance && !colorSchemes.HasKey(appearance.ColorSchemeName()))
+            if (appearance && !colorSchemes.HasKey(appearance.DarkColorSchemeName()))
             {
-                // Clear the user set color scheme. We'll just fallback instead.
-                appearance.ClearColorSchemeName();
-                foundInvalidScheme = true;
+                // Clear the user set dark color scheme. We'll just fallback instead.
+                appearance.ClearDarkColorSchemeName();
+                foundInvalidDarkScheme = true;
+            }
+            if (appearance && !colorSchemes.HasKey(appearance.LightColorSchemeName()))
+            {
+                // Clear the user set light color scheme. We'll just fallback instead.
+                appearance.ClearLightColorSchemeName();
+                foundInvalidLightScheme = true;
             }
         }
     }
 
-    if (foundInvalidScheme)
+    if (foundInvalidDarkScheme || foundInvalidLightScheme)
     {
         _warnings.Append(SettingsLoadWarnings::UnknownColorScheme);
     }
@@ -440,8 +485,8 @@ void CascadiaSettings::_validateAllSchemesExist()
 //   we find any invalid icon images.
 void CascadiaSettings::_validateMediaResources()
 {
-    bool invalidBackground{ false };
-    bool invalidIcon{ false };
+    auto invalidBackground{ false };
+    auto invalidIcon{ false };
 
     for (auto profile : _allProfiles)
     {
@@ -480,9 +525,15 @@ void CascadiaSettings::_validateMediaResources()
             }
         }
 
-        // Anything longer than 2 wchar_t's _isn't_ an emoji or symbol,
-        // so treat it as an invalid path.
-        if (const auto icon = profile.Icon(); icon.size() > 2)
+        // Anything longer than 2 wchar_t's _isn't_ an emoji or symbol, so treat
+        // it as an invalid path.
+        //
+        // Explicitly just use the Icon here, not the EvaluatedIcon. We don't
+        // want to blow up if we fell back to the commandline and the
+        // commandline _isn't an icon_.
+        // GH #17943: "none" is a special value interpreted as "remove the icon"
+        static constexpr std::wstring_view HideIconValue{ L"none" };
+        if (const auto icon = profile.Icon(); icon.size() > 2 && icon != HideIconValue)
         {
             const auto iconPath{ wil::ExpandEnvironmentStringsW<std::wstring>(icon.c_str()) };
             try
@@ -509,6 +560,30 @@ void CascadiaSettings::_validateMediaResources()
 }
 
 // Method Description:
+// - Checks if the profiles contain multiple environment variables with the same name, but different
+//   cases
+void CascadiaSettings::_validateProfileEnvironmentVariables()
+{
+    for (const auto& profile : _allProfiles)
+    {
+        std::set<std::wstring, til::env_key_sorter> envVarNames{};
+        if (profile.EnvironmentVariables() == nullptr)
+        {
+            continue;
+        }
+        for (const auto [key, value] : profile.EnvironmentVariables())
+        {
+            const auto iterator = envVarNames.insert(key.c_str());
+            if (!iterator.second)
+            {
+                _warnings.Append(SettingsLoadWarnings::InvalidProfileEnvironmentVariables);
+                return;
+            }
+        }
+    }
+}
+
+// Method Description:
 // - Helper to get the GUID of a profile, given an optional index and a possible
 //   "profile" value to override that.
 // - First, we'll try looking up the profile for the given index. This will
@@ -528,9 +603,12 @@ Model::Profile CascadiaSettings::GetProfileForArgs(const Model::NewTerminalArgs&
 {
     if (newTerminalArgs)
     {
-        if (auto profile = GetProfileByName(newTerminalArgs.Profile()))
+        if (const auto name = newTerminalArgs.Profile(); !name.empty())
         {
-            return profile;
+            if (auto profile = GetProfileByName(name))
+            {
+                return profile;
+            }
         }
 
         if (const auto index = newTerminalArgs.ProfileIndex())
@@ -539,27 +617,113 @@ Model::Profile CascadiaSettings::GetProfileForArgs(const Model::NewTerminalArgs&
             {
                 return profile;
             }
+            else
+            {
+                // GH#11114 - Return NOTHING if they asked for a profile index
+                // outside the range of available profiles.
+                // Really, the caller should check this beforehand
+                return nullptr;
+            }
+        }
+
+        if (const auto commandLine = newTerminalArgs.Commandline(); !commandLine.empty())
+        {
+            if (auto profile = _getProfileForCommandLine(commandLine))
+            {
+                return profile;
+            }
         }
     }
 
-    if constexpr (Feature_ShowProfileDefaultsInSettings::IsEnabled())
+    // If the user has access to the "Defaults" profile, and no profile was otherwise specified,
+    // what we do is dependent on whether there was a commandline.
+    // If there was a commandline (case 1), we we'll launch in the "Defaults" profile.
+    // If there wasn't a commandline or there wasn't a NewTerminalArgs (case 2), we'll
+    //   launch in the user's actual default profile.
+    // Case 2 above could be the result of a "nt" or "sp" invocation that doesn't specify anything.
+    // TODO GH#10952: Detect the profile based on the commandline (add matching support)
+    return (!newTerminalArgs || newTerminalArgs.Commandline().empty()) ?
+               FindProfile(GlobalSettings().DefaultProfile()) :
+               ProfileDefaults();
+}
+
+// The method does some crude command line matching for our console hand-off support.
+// If you have hand-off enabled and start PowerShell from the start menu we might be called with
+//   "C:\Program Files\PowerShell\7\pwsh.exe -WorkingDirectory ~"
+// This function then checks all known user profiles for one that's compatible with the commandLine.
+// In this case we might have a profile with the command line
+//   "C:\Program Files\PowerShell\7\pwsh.exe"
+// This function will then match this profile return it.
+//
+// If no matching profile could be found a nullptr will be returned.
+Model::Profile CascadiaSettings::_getProfileForCommandLine(const winrt::hstring& commandLine) const
+{
+    // We're going to cache all the command lines we got, as
+    // NormalizeCommandLine is a relatively heavy operation.
+    std::call_once(_commandLinesCacheOnce, [this]() {
+        _commandLinesCache.reserve(_allProfiles.Size());
+
+        for (const auto& profile : _allProfiles)
+        {
+            if (profile.ConnectionType() != winrt::guid{})
+            {
+                continue;
+            }
+
+            const auto cmd = profile.Commandline();
+            if (cmd.empty())
+            {
+                continue;
+            }
+
+            try
+            {
+                _commandLinesCache.emplace_back(Profile::NormalizeCommandLine(cmd.c_str()), profile);
+            }
+            CATCH_LOG()
+        }
+
+        // We're trying to find the command line with the longest common prefix below.
+        // Given the commandLine "foo.exe -bar -baz" and these two user profiles:
+        // * "foo.exe"
+        // * "foo.exe -bar"
+        // we want to choose the second one. By sorting the _commandLinesCache in a descending order
+        // by command line length, we can return from this function the moment we found a matching
+        // profile as there cannot possibly be any other profile anymore with a longer command line.
+        std::stable_sort(_commandLinesCache.begin(), _commandLinesCache.end(), [](const auto& lhs, const auto& rhs) {
+            return lhs.first.size() > rhs.first.size();
+        });
+    });
+
+    try
     {
-        // If the user has access to the "Defaults" profile, and no profile was otherwise specified,
-        // what we do is dependent on whether there was a commandline.
-        // If there was a commandline (case 1), we we'll launch in the "Defaults" profile.
-        // If there wasn't a commandline or there wasn't a NewTerminalArgs (case 2), we'll
-        //   launch in the user's actual default profile.
-        // Case 2 above could be the result of a "nt" or "sp" invocation that doesn't specify anything.
-        // TODO GH#10952: Detect the profile based on the commandline (add matching support)
-        return (!newTerminalArgs || newTerminalArgs.Commandline().empty()) ?
-                   FindProfile(GlobalSettings().DefaultProfile()) :
-                   ProfileDefaults();
+        const auto needle = Profile::NormalizeCommandLine(commandLine.c_str());
+
+        // til::starts_with(string, prefix) will always return false if prefix.size() > string.size().
+        // --> Using binary search we can safely skip all items in _commandLinesCache where .first.size() > needle.size().
+        const auto end = _commandLinesCache.end();
+        auto it = std::lower_bound(_commandLinesCache.begin(), end, needle, [&](const auto& lhs, const auto& rhs) {
+            return lhs.first.size() > rhs.size();
+        });
+
+        // `it` is now at a position where it->first.size() <= needle.size().
+        // Hopefully we'll now find a command line with matching prefix.
+        for (; it != end; ++it)
+        {
+            const auto& prefix = it->first;
+            const auto length = gsl::narrow<int>(prefix.size());
+            if (CompareStringOrdinal(needle.data(), length, prefix.data(), length, TRUE) == CSTR_EQUAL)
+            {
+                return it->second;
+            }
+        }
     }
-    else
+    catch (...)
     {
-        // For compatibility with the stable version's behavior, return the default by GUID in all other cases.
-        return FindProfile(GlobalSettings().DefaultProfile());
+        LOG_CAUGHT_EXCEPTION();
     }
+
+    return nullptr;
 }
 
 // Method Description:
@@ -653,7 +817,7 @@ void CascadiaSettings::_validateKeybindings() const
 //   we find any command with an invalid color scheme.
 void CascadiaSettings::_validateColorSchemesInCommands() const
 {
-    bool foundInvalidScheme{ false };
+    auto foundInvalidScheme{ false };
     for (const auto& nameAndCmd : _globals->ActionMap().NameMap())
     {
         if (_hasInvalidColorScheme(nameAndCmd.Value()))
@@ -671,7 +835,7 @@ void CascadiaSettings::_validateColorSchemesInCommands() const
 
 bool CascadiaSettings::_hasInvalidColorScheme(const Model::Command& command) const
 {
-    bool invalid{ false };
+    auto invalid{ false };
     if (command.HasNestedCommands())
     {
         for (const auto& nested : command.NestedCommands())
@@ -702,24 +866,6 @@ bool CascadiaSettings::_hasInvalidColorScheme(const Model::Command& command) con
 }
 
 // Method Description:
-// - Lookup the color scheme for a given profile. If the profile doesn't exist,
-//   or the scheme name listed in the profile doesn't correspond to a scheme,
-//   this will return `nullptr`.
-// Arguments:
-// - profileGuid: the GUID of the profile to find the scheme for.
-// Return Value:
-// - a non-owning pointer to the scheme.
-Model::ColorScheme CascadiaSettings::GetColorSchemeForProfile(const Model::Profile& profile) const
-{
-    if (!profile)
-    {
-        return nullptr;
-    }
-    const auto schemeName = profile.DefaultAppearance().ColorSchemeName();
-    return _globals->ColorSchemes().TryLookup(schemeName);
-}
-
-// Method Description:
 // - updates all references to that color scheme with the new name
 // Arguments:
 // - oldName: the original name for the color scheme
@@ -730,26 +876,41 @@ void CascadiaSettings::UpdateColorSchemeReferences(const winrt::hstring& oldName
 {
     // update profiles.defaults, if necessary
     if (_baseLayerProfile &&
-        _baseLayerProfile->DefaultAppearance().HasColorSchemeName() &&
-        _baseLayerProfile->DefaultAppearance().ColorSchemeName() == oldName)
+        _baseLayerProfile->DefaultAppearance().HasDarkColorSchemeName() &&
+        _baseLayerProfile->DefaultAppearance().DarkColorSchemeName() == oldName)
     {
-        _baseLayerProfile->DefaultAppearance().ColorSchemeName(newName);
+        _baseLayerProfile->DefaultAppearance().DarkColorSchemeName(newName);
+    }
+    // NOT else-if, because both could match
+    if (_baseLayerProfile &&
+        _baseLayerProfile->DefaultAppearance().HasLightColorSchemeName() &&
+        _baseLayerProfile->DefaultAppearance().LightColorSchemeName() == oldName)
+    {
+        _baseLayerProfile->DefaultAppearance().LightColorSchemeName(newName);
     }
 
     // update all profiles referencing this color scheme
     for (const auto& profile : _allProfiles)
     {
         const auto defaultAppearance = profile.DefaultAppearance();
-        if (defaultAppearance.HasColorSchemeName() && defaultAppearance.ColorSchemeName() == oldName)
+        if (defaultAppearance.HasLightColorSchemeName() && defaultAppearance.LightColorSchemeName() == oldName)
         {
-            defaultAppearance.ColorSchemeName(newName);
+            defaultAppearance.LightColorSchemeName(newName);
+        }
+        if (defaultAppearance.HasDarkColorSchemeName() && defaultAppearance.DarkColorSchemeName() == oldName)
+        {
+            defaultAppearance.DarkColorSchemeName(newName);
         }
 
-        if (profile.UnfocusedAppearance())
+        if (auto unfocused{ profile.UnfocusedAppearance() })
         {
-            if (profile.UnfocusedAppearance().HasColorSchemeName() && profile.UnfocusedAppearance().ColorSchemeName() == oldName)
+            if (unfocused.HasLightColorSchemeName() && unfocused.LightColorSchemeName() == oldName)
             {
-                profile.UnfocusedAppearance().ColorSchemeName(newName);
+                unfocused.LightColorSchemeName(newName);
+            }
+            if (unfocused.HasDarkColorSchemeName() && unfocused.DarkColorSchemeName() == oldName)
+            {
+                unfocused.DarkColorSchemeName(newName);
             }
         }
     }
@@ -764,7 +925,7 @@ winrt::hstring CascadiaSettings::ApplicationDisplayName()
     }
     CATCH_LOG();
 
-    return RS_(L"ApplicationDisplayNameUnpackaged");
+    return IsPortableMode() ? RS_(L"ApplicationDisplayNamePortable") : RS_(L"ApplicationDisplayNameUnpackaged");
 }
 
 winrt::hstring CascadiaSettings::ApplicationVersion()
@@ -828,6 +989,11 @@ winrt::hstring CascadiaSettings::ApplicationVersion()
 // - True if OS supports default terminal. False otherwise.
 bool CascadiaSettings::IsDefaultTerminalAvailable() noexcept
 {
+    if (!IsPackaged())
+    {
+        return false;
+    }
+
     OSVERSIONINFOEXW osver{};
     osver.dwOSVersionInfoSize = sizeof(osver);
     osver.dwBuildNumber = 22000;
@@ -835,7 +1001,26 @@ bool CascadiaSettings::IsDefaultTerminalAvailable() noexcept
     DWORDLONG dwlConditionMask = 0;
     VER_SET_CONDITION(dwlConditionMask, VER_BUILDNUMBER, VER_GREATER_EQUAL);
 
-    return VerifyVersionInfoW(&osver, VER_BUILDNUMBER, dwlConditionMask) != FALSE;
+    if (VerifyVersionInfoW(&osver, VER_BUILDNUMBER, dwlConditionMask) != FALSE)
+    {
+        return true;
+    }
+
+    static bool isOtherwiseAvailable = [] {
+        wil::unique_hkey key;
+        const auto lResult = RegOpenKeyExW(HKEY_LOCAL_MACHINE,
+                                           L"SOFTWARE\\Microsoft\\SystemSettings\\SettingId\\SystemSettings_Developer_Mode_Setting_DefaultTerminalApp",
+                                           0,
+                                           KEY_READ,
+                                           &key);
+        return static_cast<bool>(key) && ERROR_SUCCESS == lResult;
+    }();
+    return isOtherwiseAvailable;
+}
+
+bool CascadiaSettings::IsDefaultTerminalSet() noexcept
+{
+    return DefaultTerminal::HasCurrent();
 }
 
 // Method Description:
@@ -844,31 +1029,21 @@ bool CascadiaSettings::IsDefaultTerminalAvailable() noexcept
 // - <none>
 // Return Value:
 // - an iterable collection of all available terminals that could be the default.
-IObservableVector<Model::DefaultTerminal> CascadiaSettings::DefaultTerminals() const noexcept
+IObservableVector<Model::DefaultTerminal> CascadiaSettings::DefaultTerminals() noexcept
 {
-    const auto available = DefaultTerminal::Available();
-    std::vector<Model::DefaultTerminal> terminals{ available.Size(), nullptr };
-    available.GetMany(0, terminals);
-    return winrt::single_threaded_observable_vector(std::move(terminals));
+    _refreshDefaultTerminals();
+    return _defaultTerminals;
 }
 
 // Method Description:
 // - Returns the currently selected default terminal application.
-// - DANGER! This will be null unless you've called
-//   CascadiaSettings::RefreshDefaultTerminals. At the time of this comment (May
-
-//   2021), only the Launch page in the settings UI calls that method, so this
-//   value is unset unless you've navigated to that page.
 // Arguments:
 // - <none>
 // Return Value:
 // - the selected default terminal application
 Settings::Model::DefaultTerminal CascadiaSettings::CurrentDefaultTerminal() noexcept
 {
-    if (!_currentDefaultTerminal)
-    {
-        _currentDefaultTerminal = DefaultTerminal::Current();
-    }
+    _refreshDefaultTerminals();
     return _currentDefaultTerminal;
 }
 
@@ -883,11 +1058,83 @@ void CascadiaSettings::CurrentDefaultTerminal(const Model::DefaultTerminal& term
     _currentDefaultTerminal = terminal;
 }
 
-void CascadiaSettings::ExportFile(winrt::hstring path, winrt::hstring content)
+// This function is implicitly called by DefaultTerminals/CurrentDefaultTerminal().
+// It reloads the selection of available, installed terminals and caches them.
+// WinUI requires us that the `SelectedItem` of a collection is member of the list given to `ItemsSource`.
+// It's thus important that _currentDefaultTerminal is a member of _defaultTerminals.
+// Right now this is implicitly the case thanks to DefaultTerminal::Available(),
+// but in the future it might be worthwhile to change the code to use list indices instead.
+void CascadiaSettings::_refreshDefaultTerminals()
 {
-    try
+    if (_defaultTerminals)
     {
-        winrt::Microsoft::Terminal::Settings::Model::WriteUTF8FileAtomic({ path.c_str() }, til::u16u8(content));
+        return;
     }
-    CATCH_LOG();
+
+    // This is an extract of extractValueFromTaskWithoutMainThreadAwait
+    // as DefaultTerminal::Available creates the exact same issue.
+    std::pair<std::vector<Model::DefaultTerminal>, Model::DefaultTerminal> result{ {}, nullptr };
+    til::latch latch{ 1 };
+
+    std::ignore = [&]() -> safe_void_coroutine {
+        const auto cleanup = wil::scope_exit([&]() {
+            latch.count_down();
+        });
+        co_await winrt::resume_background();
+        result = DefaultTerminal::Available();
+    }();
+
+    latch.wait();
+    _defaultTerminals = winrt::single_threaded_observable_vector(std::move(result.first));
+    _currentDefaultTerminal = std::move(result.second);
+}
+
+void CascadiaSettings::_validateThemeExists()
+{
+    const auto& themes{ _globals->Themes() };
+    if (themes.Size() == 0)
+    {
+        // We didn't even load the default themes. This should only be possible
+        // if the defaults.json didn't include any themes, or if no
+        // defaults.json was loaded at all. The second case is especially common
+        // in tests (that don't bother with a defaults.json). No matter. Create
+        // a default theme under `system` and just stick it in there.
+
+        auto newTheme = winrt::make_self<Theme>();
+        newTheme->Name(L"system");
+        _globals->AddTheme(*newTheme);
+        _globals->Theme(Model::ThemePair{ L"system" });
+    }
+
+    const auto& theme{ _globals->Theme() };
+    if (theme.DarkName() == theme.LightName())
+    {
+        // Only one theme. We'll treat it as such.
+        if (!themes.HasKey(theme.DarkName()))
+        {
+            _warnings.Append(SettingsLoadWarnings::UnknownTheme);
+            // safely fall back to system as the theme.
+            _globals->Theme(*winrt::make_self<ThemePair>(L"system"));
+        }
+    }
+    else
+    {
+        // Two different themes. Check each separately, and fall back to a
+        // reasonable default contextually
+        if (!themes.HasKey(theme.LightName()))
+        {
+            _warnings.Append(SettingsLoadWarnings::UnknownTheme);
+            theme.LightName(L"light");
+        }
+        if (!themes.HasKey(theme.DarkName()))
+        {
+            _warnings.Append(SettingsLoadWarnings::UnknownTheme);
+            theme.DarkName(L"dark");
+        }
+    }
+}
+
+void CascadiaSettings::ExpandCommands()
+{
+    _globals->ExpandCommands(ActiveProfiles().GetView(), GlobalSettings().ColorSchemes());
 }

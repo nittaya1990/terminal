@@ -17,10 +17,10 @@ UTILS_DEFINE_LIBRARY_RESOURCE_SCOPE(L"Microsoft.Terminal.Settings.Editor/Resourc
 
 namespace winrt::Microsoft::Terminal::Settings
 {
-    hstring GetSelectedItemTag(winrt::Windows::Foundation::IInspectable const& comboBoxAsInspectable)
+    hstring GetSelectedItemTag(const winrt::Windows::Foundation::IInspectable& comboBoxAsInspectable)
     {
-        Controls::ComboBox comboBox = comboBoxAsInspectable.as<Controls::ComboBox>();
-        Controls::ComboBoxItem selectedOption = comboBox.SelectedItem().as<Controls::ComboBoxItem>();
+        auto comboBox = comboBoxAsInspectable.as<Controls::ComboBox>();
+        auto selectedOption = comboBox.SelectedItem().as<Controls::ComboBoxItem>();
 
         return unbox_value<hstring>(selectedOption.Tag());
     }
@@ -28,7 +28,7 @@ namespace winrt::Microsoft::Terminal::Settings
     hstring LocalizedNameForEnumName(const std::wstring_view sectionAndEnumType, const std::wstring_view enumValue, const std::wstring_view propertyType)
     {
         // Uppercase the first letter to conform to our current Resource keys
-        auto fmtKey = fmt::format(L"{}{}{}/{}", sectionAndEnumType, char(std::towupper(enumValue[0])), enumValue.substr(1), propertyType);
+        auto fmtKey = fmt::format(FMT_COMPILE(L"{}{}{}/{}"), sectionAndEnumType, static_cast<wchar_t>(std::towupper(enumValue[0])), enumValue.substr(1), propertyType);
         return GetLibraryResourceString(fmtKey);
     }
 }

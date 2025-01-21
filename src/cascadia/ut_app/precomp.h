@@ -28,7 +28,7 @@ Author(s):
 #endif
 
 #include <WexTestClass.h>
-#include <json.h>
+#include <json/json.h>
 #include "consoletaeftemplates.hpp"
 
 // Are you thinking about adding WinRT things here? If so, you probably want to
@@ -38,7 +38,7 @@ Author(s):
 // need to be added to the LocalTests.
 
 // These however are okay, for some _basic_ winrt things:
-#include <unknwn.h>
+#include <Unknwn.h>
 #include <hstring.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>
@@ -53,7 +53,6 @@ Author(s):
 #include "til.h"
 
 // Common includes for most tests:
-#include "../../inc/argb.h"
 #include "../../inc/conattrs.hpp"
 #include "../../types/inc/utils.hpp"
 #include "../../inc/DefaultSettings.h"

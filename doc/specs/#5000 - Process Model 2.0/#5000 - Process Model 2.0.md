@@ -225,7 +225,7 @@ The window process can listen for that event to indicate that the swapchain
 changed. The window will then query for the content process's PID and create a
 handle to the content process. The window will query the current value of the
 content process's `HANDLE` to the swapchain. The window will then duplicate that
-`HANDLE` into it's own process space. Now that the window has a handle to the
+`HANDLE` into its own process space. Now that the window has a handle to the
 swapchain, it can use [`ISwapChainPanelNative2::SetSwapChainHandle`] to set the
 SwapChainPanel to use the same swapchain.
 
@@ -317,7 +317,7 @@ Some things we considered during this investigation:
   - We could theoretically build an RPC tunnel between content and window
     processes, and use the RPC connection to marshal the content process to the
     elevated window. However, then _we_ would need to be responsible for
-    securing access the the RPC endpoint, and we feel even less confident doing
+    securing access the RPC endpoint, and we feel even less confident doing
     that.
   - Attempts were also made to use a window-broker-content architecture, with
     the broker process having a static CLSID in the registry, and having the
@@ -449,7 +449,7 @@ schemes for the commandline parameters. The following is given as an example of
 how these arguments _might_ be authored and implemented to satisfy some of these
 scenarios.
 
-Since each window process will have it's own unique ID assigned to it by the
+Since each window process will have its own unique ID assigned to it by the
 monarch, then running a command in a given window with ID `N` should be as easy
 as something like:
 
@@ -627,7 +627,7 @@ Then we have two paths forward:
   It should create a new content process to handle this connection.
     - the content process will need a way of being invoked by passing it handles
       to the new client. This way, the content process can dupe these handles into
-      it's own process space, to be able to create the `ITerminalConnection` in
+      its own process space, to be able to create the `ITerminalConnection` in
       its own process space.
 
 3. If this new window process is the monarch, then great! There are no other
@@ -808,7 +808,7 @@ The Settings UI is something we intend on shipping in the Terminal as a part of
 also plan on hopefully making the Settings UI appear as its own tab within the
 Terminal. This would be the first example of having non-terminal content
 directly in the application. How would we support tearing out the Settings UI
-tab into it's own window?
+tab into its own window?
 
 Options available here include:
 
@@ -967,7 +967,7 @@ of each other.
    - Summon the nearest window
    - make the window "drop down" from the top
    - Summon the MRU window
-     - It would need to track a the MRU for windows, so pressing the shortcut when
+     - It would need to track the MRU for windows, so pressing the shortcut when
        no window is active summons the MRU one.
 
 <hr>
@@ -1123,7 +1123,7 @@ elevated windows, when they trust the extension. We could have an additional set
 of settings the user could use to enable certain extensions in elevated windows.
 However, this setting cannot live in the normal `settings.json` or even
 `state.json` (see [#7972], since those files are writable by any medium-IL
-process. Instead, this setting would ned to live in a separate file that's
+process. Instead, this setting would need to live in a separate file that's
 protected to only be writable by elevated processes. This would ensure that an
 attacker could not just add their extension to the list of white-listed
 extensions. When the settings UI wants to modify that setting, it'll need to

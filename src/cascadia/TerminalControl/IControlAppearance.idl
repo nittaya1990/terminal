@@ -5,18 +5,20 @@ namespace Microsoft.Terminal.Control
 {
     interface IControlAppearance requires Microsoft.Terminal.Core.ICoreAppearance
     {
-        Microsoft.Terminal.Core.Color SelectionBackground;
-        String BackgroundImage;
-        Double BackgroundImageOpacity;
-        Windows.UI.Xaml.Media.Stretch BackgroundImageStretchMode;
-        Windows.UI.Xaml.HorizontalAlignment BackgroundImageHorizontalAlignment;
-        Windows.UI.Xaml.VerticalAlignment BackgroundImageVerticalAlignment;
-        Boolean IntenseIsBold;
-        // IntenseIsBright is in Core Appearance
-        Double Opacity;
+        String BackgroundImage { get; };
+        Single BackgroundImageOpacity { get; };
+        Windows.UI.Xaml.Media.Stretch BackgroundImageStretchMode { get; };
+        Windows.UI.Xaml.HorizontalAlignment BackgroundImageHorizontalAlignment { get; };
+        Windows.UI.Xaml.VerticalAlignment BackgroundImageVerticalAlignment { get; };
+        // IntenseIsBold and IntenseIsBright are in Core Appearance
+        Single Opacity { get; };
+        Boolean UseAcrylic { get; };
 
         // Experimental settings
-        Boolean RetroTerminalEffect;
-        String PixelShaderPath;
+        Boolean RetroTerminalEffect { get; };
+        String PixelShaderPath { get; };
+        String PixelShaderImagePath { get; };
+
+        // NOTE! When adding something here, make sure to update ControlProperties.h too!
     };
 }

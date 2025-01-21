@@ -32,16 +32,25 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     InteractivityAutomationPeer::InteractivityAutomationPeer(Control::implementation::ControlInteractivity* owner) :
         _interactivity{ owner }
     {
-        THROW_IF_FAILED(::Microsoft::WRL::MakeAndInitialize<::Microsoft::Terminal::TermControlUiaProvider>(&_uiaProvider, _interactivity->GetUiaData(), this));
+        THROW_IF_FAILED(::Microsoft::WRL::MakeAndInitialize<::Microsoft::Terminal::TermControlUiaProvider>(&_uiaProvider, _interactivity->GetRenderData(), this));
     };
 
+    // Bounds is expected to be in pixels.
     void InteractivityAutomationPeer::SetControlBounds(const Windows::Foundation::Rect bounds)
     {
-        _controlBounds = til::rectangle{ til::math::rounding, bounds };
+        _controlBounds = { til::math::rounding, bounds };
     }
+
+    // Padding is expected to be in DIPs.
     void InteractivityAutomationPeer::SetControlPadding(const Core::Padding padding)
     {
-        _controlPadding = padding;
+        const auto scale = static_cast<float>(DisplayInformation::GetForCurrentView().RawPixelsPerViewPixel());
+        _controlPadding = { til::math::rounding, padding.Left * scale, padding.Top * scale, padding.Right * scale, padding.Bottom * scale };
+    }
+
+    void InteractivityAutomationPeer::ParentProvider(AutomationPeer parentProvider)
+    {
+        _parentProvider = parentProvider;
     }
 
     // Method Description:
@@ -56,7 +65,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     // - <none>
     void InteractivityAutomationPeer::SignalSelectionChanged()
     {
-        _SelectionChangedHandlers(*this, nullptr);
+        SelectionChanged.raise(*this, nullptr);
     }
 
     // Method Description:
@@ -71,7 +80,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     // - <none>
     void InteractivityAutomationPeer::SignalTextChanged()
     {
-        _TextChangedHandlers(*this, nullptr);
+        TextChanged.raise(*this, nullptr);
     }
 
     // Method Description:
@@ -86,7 +95,12 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     // - <none>
     void InteractivityAutomationPeer::SignalCursorChanged()
     {
-        _CursorChangedHandlers(*this, nullptr);
+        CursorChanged.raise(*this, nullptr);
+    }
+
+    void InteractivityAutomationPeer::NotifyNewOutput(std::wstring_view newOutput)
+    {
+        NewOutput.raise(*this, hstring{ newOutput });
     }
 
 #pragma region ITextProvider
@@ -110,30 +124,21 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         // ScreenInfoUiaProvider doesn't actually use parameter, so just pass in nullptr
         THROW_IF_FAILED(_uiaProvider->RangeFromChild(/* IRawElementProviderSimple */ nullptr,
                                                      &returnVal));
-
-        const auto parentProvider = this->ProviderFromPeer(*this);
-        const auto xutr = winrt::make_self<XamlUiaTextRange>(returnVal, parentProvider);
-        return xutr.as<XamlAutomation::ITextRangeProvider>();
+        return _CreateXamlUiaTextRange(returnVal);
     }
 
     XamlAutomation::ITextRangeProvider InteractivityAutomationPeer::RangeFromPoint(Windows::Foundation::Point screenLocation)
     {
         UIA::ITextRangeProvider* returnVal;
         THROW_IF_FAILED(_uiaProvider->RangeFromPoint({ screenLocation.X, screenLocation.Y }, &returnVal));
-
-        const auto parentProvider = this->ProviderFromPeer(*this);
-        const auto xutr = winrt::make_self<XamlUiaTextRange>(returnVal, parentProvider);
-        return xutr.as<XamlAutomation::ITextRangeProvider>();
+        return _CreateXamlUiaTextRange(returnVal);
     }
 
     XamlAutomation::ITextRangeProvider InteractivityAutomationPeer::DocumentRange()
     {
         UIA::ITextRangeProvider* returnVal;
         THROW_IF_FAILED(_uiaProvider->get_DocumentRange(&returnVal));
-
-        const auto parentProvider = this->ProviderFromPeer(*this);
-        const auto xutr = winrt::make_self<XamlUiaTextRange>(returnVal, parentProvider);
-        return xutr.as<XamlAutomation::ITextRangeProvider>();
+        return _CreateXamlUiaTextRange(returnVal);
     }
 
     XamlAutomation::SupportedTextSelection InteractivityAutomationPeer::SupportedTextSelection()
@@ -146,12 +151,12 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 #pragma endregion
 
 #pragma region IControlAccessibilityInfo
-    COORD InteractivityAutomationPeer::GetFontSize() const
+    til::size InteractivityAutomationPeer::GetFontSize() const noexcept
     {
-        return til::size{ til::math::rounding, _interactivity->Core().FontSize() };
+        return { til::math::rounding, _interactivity->Core().FontSize() };
     }
 
-    RECT InteractivityAutomationPeer::GetBounds() const
+    til::rect InteractivityAutomationPeer::GetBounds() const noexcept
     {
         return _controlBounds;
     }
@@ -164,21 +169,30 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         return S_OK;
     }
 
-    RECT InteractivityAutomationPeer::GetPadding() const
+    til::rect InteractivityAutomationPeer::GetPadding() const noexcept
     {
         return _controlPadding;
     }
 
-    double InteractivityAutomationPeer::GetScaleFactor() const
+    void InteractivityAutomationPeer::ChangeViewport(const til::inclusive_rect& NewWindow)
     {
-        return DisplayInformation::GetForCurrentView().RawPixelsPerViewPixel();
-    }
-
-    void InteractivityAutomationPeer::ChangeViewport(const SMALL_RECT NewWindow)
-    {
-        _interactivity->UpdateScrollbar(NewWindow.Top);
+        _interactivity->UpdateScrollbar(static_cast<float>(NewWindow.top));
     }
 #pragma endregion
+
+    XamlAutomation::ITextRangeProvider InteractivityAutomationPeer::_CreateXamlUiaTextRange(UIA::ITextRangeProvider* returnVal) const
+    {
+        // LOAD-BEARING: use _parentProvider->ProviderFromPeer(_parentProvider) instead of this->ProviderFromPeer(*this).
+        // Since we split the automation peer into TermControlAutomationPeer and InteractivityAutomationPeer,
+        // using "this" returns null. This can cause issues with some UIA Client scenarios like any navigation in Narrator.
+        const auto parent{ _parentProvider.get() };
+        if (!parent)
+        {
+            return nullptr;
+        }
+        const auto xutr = winrt::make_self<XamlUiaTextRange>(returnVal, parent.ProviderFromPeer(parent));
+        return xutr.as<XamlAutomation::ITextRangeProvider>();
+    };
 
     // Method Description:
     // - extracts the UiaTextRanges from the SAFEARRAY and converts them to Xaml ITextRangeProviders
@@ -190,15 +204,16 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     {
         // transfer ownership of UiaTextRanges to this new vector
         auto providers = SafeArrayToOwningVector<::Microsoft::Terminal::TermControlUiaTextRange>(textRanges);
-        int count = gsl::narrow<int>(providers.size());
+        auto count = gsl::narrow<int>(providers.size());
 
         std::vector<XamlAutomation::ITextRangeProvider> vec;
         vec.reserve(count);
-        auto parentProvider = this->ProviderFromPeer(*this);
-        for (int i = 0; i < count; i++)
+        for (auto i = 0; i < count; i++)
         {
-            auto xutr = make_self<XamlUiaTextRange>(providers[i].detach(), parentProvider);
-            vec.emplace_back(xutr.as<XamlAutomation::ITextRangeProvider>());
+            if (auto xutr = _CreateXamlUiaTextRange(providers[i].detach()))
+            {
+                vec.emplace_back(std::move(xutr));
+            }
         }
 
         com_array<XamlAutomation::ITextRangeProvider> result{ vec };

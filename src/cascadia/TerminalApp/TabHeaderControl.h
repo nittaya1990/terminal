@@ -4,7 +4,6 @@
 #pragma once
 
 #include "winrt/Microsoft.UI.Xaml.Controls.h"
-#include "inc/cppwinrt_utils.h"
 
 #include "TabHeaderControl.g.h"
 
@@ -15,19 +14,18 @@ namespace winrt::TerminalApp::implementation
         TabHeaderControl();
         void BeginRename();
 
-        void RenameBoxLostFocusHandler(winrt::Windows::Foundation::IInspectable const& sender,
-                                       winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
+        void RenameBoxLostFocusHandler(const winrt::Windows::Foundation::IInspectable& sender,
+                                       const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
 
         bool InRename();
 
-        WINRT_CALLBACK(TitleChangeRequested, TerminalApp::TitleChangeRequestedArgs);
+        til::event<TerminalApp::TitleChangeRequestedArgs> TitleChangeRequested;
+        til::typed_event<> RenameEnded;
 
-        WINRT_CALLBACK(PropertyChanged, Windows::UI::Xaml::Data::PropertyChangedEventHandler);
-        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, Title, _PropertyChangedHandlers);
-        WINRT_OBSERVABLE_PROPERTY(double, RenamerMaxWidth, _PropertyChangedHandlers);
-        WINRT_OBSERVABLE_PROPERTY(winrt::TerminalApp::TerminalTabStatus, TabStatus, _PropertyChangedHandlers);
-
-        TYPED_EVENT(RenameEnded, winrt::Windows::Foundation::IInspectable, winrt::Windows::Foundation::IInspectable);
+        til::property_changed_event PropertyChanged;
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, Title, PropertyChanged.raise);
+        WINRT_OBSERVABLE_PROPERTY(double, RenamerMaxWidth, PropertyChanged.raise);
+        WINRT_OBSERVABLE_PROPERTY(winrt::TerminalApp::TerminalTabStatus, TabStatus, PropertyChanged.raise);
 
     private:
         bool _receivedKeyDown{ false };

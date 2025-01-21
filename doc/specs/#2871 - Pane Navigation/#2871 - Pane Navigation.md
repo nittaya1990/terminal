@@ -241,7 +241,7 @@ So `focusPane(target=1, direction=up)` will attempt to focus the pane above pane
 
 > 👉 **NOTE**: At this point, the author considered "Do we even want a separate
 > action to engage the tab switcher with panes expanded?" Perhaps panes being
-> visible in the tab switcher is just part fo the tab switcher's behavior. Maybe
+> visible in the tab switcher is just part of the tab switcher's behavior. Maybe
 > there shouldn't be a separate "open the tab switcher with the panes expanded
 > to the pane I'm currently on, and the panes listed in MRU order" action.
 
@@ -253,7 +253,7 @@ After much discussion as a team, we decided that **Proposal D** would be the
 best option. We felt that there wasn't a need to add any extra configuration to
 invoke the "pane switcher" as anything different than the "tab switcher". The
 "pane switcher" should really just exist as a part of the functionality of the
-advanced tab switcher, not as it's own thing.
+advanced tab switcher, not as its own thing.
 
 Additionally, we concurred that the new "direction" value should be `prev`, not
 `last`, for consistency's sake.

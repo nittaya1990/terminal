@@ -7,8 +7,10 @@ namespace Microsoft.Terminal.Settings.Model
 {
     enum InfoBarMessage
     {
-        CloseOnExitInfo = 0,
-        KeyboardServiceWarning
+        // We need a sentinel value to map deleted keys to, as we can't actually delete them (GH#16874)
+        IgnoredDeprecatedEntry = 0,
+        CloseOnExitInfo,
+        KeyboardServiceWarning,
     };
 
     runtimeclass WindowLayout
@@ -21,19 +23,21 @@ namespace Microsoft.Terminal.Settings.Model
         Windows.Foundation.Collections.IVector<ActionAndArgs> TabLayout;
         Windows.Foundation.IReference<LaunchPosition> InitialPosition;
         Windows.Foundation.IReference<Windows.Foundation.Size> InitialSize;
+        Windows.Foundation.IReference<LaunchMode> LaunchMode;
     };
 
     [default_interface] runtimeclass ApplicationState {
         static ApplicationState SharedInstance();
 
-        void Reload();
+        void Flush();
+        void Reset();
 
-        String FilePath { get; };
+        void AppendPersistedWindowLayout(WindowLayout layout);
 
-        Windows.Foundation.Collections.IVector<WindowLayout> PersistedWindowLayouts { get; set; };
-
-        Windows.Foundation.Collections.IVector<String> RecentCommands { get; set; };
-
-        Windows.Foundation.Collections.IVector<InfoBarMessage> DismissedMessages { get; set; };
+        String SettingsHash;
+        Windows.Foundation.Collections.IVector<WindowLayout> PersistedWindowLayouts;
+        Windows.Foundation.Collections.IVector<String> RecentCommands;
+        Windows.Foundation.Collections.IVector<InfoBarMessage> DismissedMessages;
+        Windows.Foundation.Collections.IVector<String> AllowedCommandlines;
     }
 }

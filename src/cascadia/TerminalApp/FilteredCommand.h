@@ -5,7 +5,6 @@
 
 #include "HighlightedTextControl.h"
 #include "FilteredCommand.g.h"
-#include "../../cascadia/inc/cppwinrt_utils.h"
 
 // fwdecl unittest classes
 namespace TerminalAppLocalTests
@@ -18,17 +17,20 @@ namespace winrt::TerminalApp::implementation
     struct FilteredCommand : FilteredCommandT<FilteredCommand>
     {
         FilteredCommand() = default;
-        FilteredCommand(winrt::TerminalApp::PaletteItem const& item);
+        FilteredCommand(const winrt::TerminalApp::PaletteItem& item);
 
-        void UpdateFilter(winrt::hstring const& filter);
+        virtual void UpdateFilter(const winrt::hstring& filter);
 
-        static int Compare(winrt::TerminalApp::FilteredCommand const& first, winrt::TerminalApp::FilteredCommand const& second);
+        static int Compare(const winrt::TerminalApp::FilteredCommand& first, const winrt::TerminalApp::FilteredCommand& second);
 
-        WINRT_CALLBACK(PropertyChanged, Windows::UI::Xaml::Data::PropertyChangedEventHandler);
-        WINRT_OBSERVABLE_PROPERTY(winrt::TerminalApp::PaletteItem, Item, _PropertyChangedHandlers, nullptr);
-        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, Filter, _PropertyChangedHandlers);
-        WINRT_OBSERVABLE_PROPERTY(winrt::TerminalApp::HighlightedText, HighlightedName, _PropertyChangedHandlers);
-        WINRT_OBSERVABLE_PROPERTY(int, Weight, _PropertyChangedHandlers);
+        til::property_changed_event PropertyChanged;
+        WINRT_OBSERVABLE_PROPERTY(winrt::TerminalApp::PaletteItem, Item, PropertyChanged.raise, nullptr);
+        WINRT_OBSERVABLE_PROPERTY(winrt::hstring, Filter, PropertyChanged.raise);
+        WINRT_OBSERVABLE_PROPERTY(winrt::TerminalApp::HighlightedText, HighlightedName, PropertyChanged.raise);
+        WINRT_OBSERVABLE_PROPERTY(int, Weight, PropertyChanged.raise);
+
+    protected:
+        void _constructFilteredCommand(const winrt::TerminalApp::PaletteItem& item);
 
     private:
         winrt::TerminalApp::HighlightedText _computeHighlightedName();

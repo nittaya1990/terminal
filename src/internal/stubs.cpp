@@ -21,19 +21,7 @@ using namespace Microsoft::Console::Internal;
     return S_OK;
 }
 
-void EdpPolicy::AuditClipboard(const std::wstring_view /*destinationName*/) noexcept
-{
-}
-
 [[nodiscard]] HRESULT Theming::TrySetDarkMode(HWND /*hwnd*/) noexcept
 {
     return S_FALSE;
-}
-
-[[nodiscard]] HRESULT DefaultApp::CheckDefaultAppPolicy(bool& isEnabled) noexcept
-{
-    // True so propsheet will show configuration options but be sure that
-    // the open one won't attempt handoff from double click of OpenConsole.exe
-    isEnabled = true;
-    return S_OK;
 }

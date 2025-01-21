@@ -23,7 +23,7 @@
 
 #include <wil/cppwinrt.h>
 
-#include <unknwn.h>
+#include <Unknwn.h>
 
 #include <hstring.h>
 
@@ -34,3 +34,5 @@
 
 #include <shlobj.h>
 #include <shobjidl_core.h>
+
+#include <cppwinrt_utils.h>

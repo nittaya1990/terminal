@@ -1,4 +1,4 @@
-﻿/*++
+/*++
 Copyright (c) Microsoft Corporation
 Licensed under the MIT license.
 
@@ -31,16 +31,17 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         void RequestAddNew()
         {
-            _AddNewHandlers(winrt::guid{});
+            AddNew.raise(winrt::guid{});
         }
 
         void RequestDuplicate(GUID profile)
         {
-            _AddNewHandlers(profile);
+            AddNew.raise(profile);
         }
 
-        WINRT_PROPERTY(Model::CascadiaSettings, Settings, nullptr)
-        WINRT_CALLBACK(AddNew, AddNewArgs);
+        til::event<AddNewArgs> AddNew;
+
+        WINRT_PROPERTY(Model::CascadiaSettings, Settings, nullptr);
     };
 
     struct AddProfile : public HasScrollViewer<AddProfile>, AddProfileT<AddProfile>
@@ -52,8 +53,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         void AddNewClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         void DuplicateClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
+        void ProfilesSelectionChanged(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
 
+        til::property_changed_event PropertyChanged;
         WINRT_PROPERTY(Editor::AddProfilePageNavigationState, State, nullptr);
+        WINRT_OBSERVABLE_PROPERTY(bool, IsProfileSelected, PropertyChanged.raise, nullptr);
     };
 }
 

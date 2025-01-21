@@ -75,7 +75,7 @@ Some things we considered during this investigation:
   - We could theoretically build an RPC tunnel between content and window
     processes, and use the RPC connection to marshal the content process to the
     elevated window. However, then _we_ would need to be responsible for
-    securing access the the RPC endpoint, and we feel even less confident doing
+    securing access the RPC endpoint, and we feel even less confident doing
     that.
   - Attempts were also made to use a window-broker-content architecture, with
     the broker process having a static CLSID in the registry, and having the
@@ -456,7 +456,7 @@ accessible.
 
 Unfortunately, these issues are OS bugs that are largely out of our own control.
 We will continue to apply pressure to the centennial app team internally as we
-encounter these issues. They are are team best equipped to resolve these issues.
+encounter these issues. They are the team best equipped to resolve these issues.
 
 ### Default Terminal & auto-elevation
 
@@ -552,7 +552,7 @@ following behaviors:
 * `false`: If the current window is elevated, try to create a new unelevated
   window to host this connection.
 
-We could always re-introduce this setting, to supercede `elevate`.
+We could always re-introduce this setting, to supersede `elevate`.
 
 ### Change profile appearance for elevated windows
 
@@ -612,8 +612,8 @@ You could have a profile that layers on an existing profile, with elevated-speci
 [#8514]: https://github.com/microsoft/terminal/issues/8514
 [#10276]: https://github.com/microsoft/terminal/issues/10276
 
-[Process Model 2.0 Spec]: https://github.com/microsoft/terminal/blob/main/doc/specs/%235000%20-%20Process%20Model%202.0.md
-[Configuration object for profiles]: https://github.com/microsoft/terminal/blob/main/doc/specs/Configuration%20object%20for%20profiles.md
-[Session Management Spec]: https://github.com/microsoft/terminal/blob/main/doc/specs/%234472%20-%20Windows%20Terminal%20Session%20Management.md
+[Process Model 2.0 Spec]: ../%235000%20-%20Process%20Model%202.0.md
+[Configuration object for profiles]: ../%233062%20-%20Appearance configuration object for profiles.md
+[Session Management Spec]: ./%234472%20-%20Windows%20Terminal%20Session%20Management.md
 [The Old New Thing: How can I launch an unelevated process from my elevated process, redux]: https://devblogs.microsoft.com/oldnewthing/20190425-00/?p=102443
 [Workspace Trust]: https://code.visualstudio.com/docs/editor/workspace-trust

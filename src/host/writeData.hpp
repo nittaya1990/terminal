@@ -25,10 +25,9 @@ class WriteData : public IWaitRoutine
 {
 public:
     WriteData(SCREEN_INFORMATION& siContext,
-              _In_reads_bytes_(cbContext) wchar_t* const pwchContext,
+              _In_reads_bytes_(cbContext) PCWCHAR pwchContext,
               const size_t cbContext,
-              const UINT uiOutputCodepage,
-              const bool requiresVtQuirk);
+              const UINT uiOutputCodepage);
     ~WriteData();
 
     void SetLeadByteAdjustmentStatus(const bool fLeadByteCaptured,
@@ -47,9 +46,8 @@ public:
 private:
     SCREEN_INFORMATION& _siContext;
     wchar_t* const _pwchContext;
-    size_t const _cbContext;
+    const size_t _cbContext;
     UINT const _uiOutputCodepage;
-    bool _requiresVtQuirk;
     bool _fLeadByteCaptured;
     bool _fLeadByteConsumed;
     size_t _cchUtf8Consumed;

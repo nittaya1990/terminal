@@ -35,18 +35,8 @@ namespace Microsoft::Console::Internal
 
     }
 
-    namespace EdpPolicy
-    {
-        void AuditClipboard(const std::wstring_view destinationName) noexcept;
-    }
-
     namespace Theming
     {
         [[nodiscard]] HRESULT TrySetDarkMode(HWND hwnd) noexcept;
-    }
-
-    namespace DefaultApp
-    {
-        [[nodiscard]] HRESULT CheckDefaultAppPolicy(bool& isEnabled) noexcept;
     }
 }

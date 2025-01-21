@@ -21,11 +21,22 @@ namespace winrt::TerminalApp::implementation
 {
     // This class is a wrapper of PaletteItem, that is used as an item of a filterable list in CommandPalette.
     // It manages a highlighted text that is computed by matching search filter characters to item name
-    FilteredCommand::FilteredCommand(winrt::TerminalApp::PaletteItem const& item) :
-        _Item(item),
-        _Filter(L""),
-        _Weight(0)
+    FilteredCommand::FilteredCommand(const winrt::TerminalApp::PaletteItem& item)
     {
+        // Actually implement the ctor in _constructFilteredCommand
+        _constructFilteredCommand(item);
+    }
+
+    // We need to actually implement the ctor in a separate helper. This is
+    // because we have a FilteredTask class which derives from FilteredCommand.
+    // HOWEVER, for cppwinrt ~ r e a s o n s ~, it doesn't actually derive from
+    // FilteredCommand directly, so we can't just use the FilteredCommand ctor
+    // directly in the base class.
+    void FilteredCommand::_constructFilteredCommand(const winrt::TerminalApp::PaletteItem& item)
+    {
+        _Item = item;
+        _Filter = L"";
+        _Weight = 0;
         _HighlightedName = _computeHighlightedName();
 
         // Recompute the highlighted name if the item name changes
@@ -39,7 +50,7 @@ namespace winrt::TerminalApp::implementation
         });
     }
 
-    void FilteredCommand::UpdateFilter(winrt::hstring const& filter)
+    void FilteredCommand::UpdateFilter(const winrt::hstring& filter)
     {
         // If the filter was not changed we want to prevent the re-computation of matching
         // that might result in triggering a notification event
@@ -74,7 +85,7 @@ namespace winrt::TerminalApp::implementation
     {
         const auto segments = winrt::single_threaded_observable_vector<winrt::TerminalApp::HighlightedTextSegment>();
         auto commandName = _Item.Name();
-        bool isProcessingMatchedSegment = false;
+        auto isProcessingMatchedSegment = false;
         uint32_t nextOffsetToReport = 0;
         uint32_t currentOffset = 0;
 
@@ -191,8 +202,8 @@ namespace winrt::TerminalApp::implementation
     // - the relative weight of this match
     int FilteredCommand::_computeWeight()
     {
-        int result = 0;
-        bool isNextSegmentWordBeginning = true;
+        auto result = 0;
+        auto isNextSegmentWordBeginning = true;
 
         for (const auto& segment : _HighlightedName.Segments())
         {
@@ -225,7 +236,7 @@ namespace winrt::TerminalApp::implementation
     // - other: another instance of FilteredCommand interface
     // Return Value:
     // - Returns true if the first is "bigger" (aka should appear first)
-    int FilteredCommand::Compare(winrt::TerminalApp::FilteredCommand const& first, winrt::TerminalApp::FilteredCommand const& second)
+    int FilteredCommand::Compare(const winrt::TerminalApp::FilteredCommand& first, const winrt::TerminalApp::FilteredCommand& second)
     {
         auto firstWeight{ first.Weight() };
         auto secondWeight{ second.Weight() };

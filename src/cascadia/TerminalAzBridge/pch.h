@@ -22,9 +22,7 @@ Abstract:
 #define NOMCX
 #define NOHELP
 #define NOCOMM
-#include <unknwn.h>
-
-#define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
+#include <Unknwn.h>
 
 #include <windows.h>
 
@@ -38,3 +36,5 @@ Abstract:
 
 #include <wil/resource.h>
 #include <wil/win32_helpers.h>
+
+#include <cppwinrt_utils.h>

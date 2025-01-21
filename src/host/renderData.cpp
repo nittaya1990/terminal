@@ -15,14 +15,13 @@ using namespace Microsoft::Console::Types;
 using namespace Microsoft::Console::Interactivity;
 using Microsoft::Console::Interactivity::ServiceLocator;
 
-#pragma region IBaseData
 // Routine Description:
 // - Retrieves the viewport that applies over the data available in the GetTextBuffer() call
 // Return Value:
 // - Viewport describing rectangular region of TextBuffer that should be displayed.
 Microsoft::Console::Types::Viewport RenderData::GetViewport() noexcept
 {
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    const auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
     return gci.GetActiveOutputBuffer().GetViewport();
 }
 
@@ -30,13 +29,12 @@ Microsoft::Console::Types::Viewport RenderData::GetViewport() noexcept
 // - Retrieves the end position of the text buffer. We use
 //   the cursor position as the text buffer end position
 // Return Value:
-// - COORD of the end position of the text buffer
-COORD RenderData::GetTextBufferEndPosition() const noexcept
+// - til::point of the end position of the text buffer
+til::point RenderData::GetTextBufferEndPosition() const noexcept
 {
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
-    Viewport bufferSize = gci.GetActiveOutputBuffer().GetBufferSize();
-    COORD endPosition{ bufferSize.Width() - 1, bufferSize.BottomInclusive() };
-    return endPosition;
+    const auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    auto bufferSize = gci.GetActiveOutputBuffer().GetBufferSize();
+    return { bufferSize.Width() - 1, bufferSize.BottomInclusive() };
 }
 
 // Routine Description:
@@ -44,9 +42,9 @@ COORD RenderData::GetTextBufferEndPosition() const noexcept
 //   the appropriate windowing.
 // Return Value:
 // - Text buffer with cell information for display
-const TextBuffer& RenderData::GetTextBuffer() noexcept
+TextBuffer& RenderData::GetTextBuffer() const noexcept
 {
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
     return gci.GetActiveOutputBuffer().GetTextBuffer();
 }
 
@@ -54,31 +52,28 @@ const TextBuffer& RenderData::GetTextBuffer() noexcept
 // - Describes which font should be used for presenting text
 // Return Value:
 // - Font description structure
-const FontInfo& RenderData::GetFontInfo() noexcept
+const FontInfo& RenderData::GetFontInfo() const noexcept
 {
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    const auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
     return gci.GetActiveOutputBuffer().GetCurrentFont();
 }
 
 // Method Description:
-// - Retrieves one rectangle per line describing the area of the viewport
+// - Retrieves one span per line describing the area of the viewport
 //   that should be highlighted in some way to represent a user-interactive selection
-// Return Value:
-// - Vector of Viewports describing the area selected
-std::vector<Viewport> RenderData::GetSelectionRects() noexcept
+std::span<const til::point_span> RenderData::GetSelectionSpans() const noexcept
 {
-    std::vector<Viewport> result;
+    return Selection::Instance().GetSelectionSpans();
+}
 
-    try
-    {
-        for (const auto& select : Selection::Instance().GetSelectionRects())
-        {
-            result.emplace_back(Viewport::FromInclusive(select));
-        }
-    }
-    CATCH_LOG();
-
-    return result;
+// Method Description:
+// - Retrieves one rectangle per line describing the area of the viewport
+//   that should be highlighted
+// Return Value:
+// - Vector of rects describing the highlighted area
+std::span<const til::point_span> RenderData::GetSearchHighlights() const noexcept
+{
+    return {};
 }
 
 // Method Description:
@@ -89,28 +84,16 @@ std::vector<Viewport> RenderData::GetSelectionRects() noexcept
 //      they're done with any querying they need to do.
 void RenderData::LockConsole() noexcept
 {
-    ::LockConsole();
+    auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    gci.LockConsole();
 }
 
 // Method Description:
 // - Unlocks the console after a call to RenderData::LockConsole.
 void RenderData::UnlockConsole() noexcept
 {
-    ::UnlockConsole();
-}
-
-#pragma endregion
-
-#pragma region IRenderData
-// Routine Description:
-// - Retrieves the brush colors that should be used in absence of any other color data from
-//   cells in the text buffer.
-// Return Value:
-// - TextAttribute containing the foreground and background brush color data.
-const TextAttribute RenderData::GetDefaultBrushColors() noexcept
-{
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
-    return gci.GetActiveOutputBuffer().GetAttributes();
+    auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    gci.UnlockConsole();
 }
 
 // Method Description:
@@ -119,9 +102,9 @@ const TextAttribute RenderData::GetDefaultBrushColors() noexcept
 // - <none>
 // Return Value:
 // - the cursor's position in the buffer relative to the buffer origin.
-COORD RenderData::GetCursorPosition() const noexcept
+til::point RenderData::GetCursorPosition() const noexcept
 {
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    const auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
     const auto& cursor = gci.GetActiveOutputBuffer().GetTextBuffer().GetCursor();
     return cursor.GetPosition();
 }
@@ -136,9 +119,9 @@ COORD RenderData::GetCursorPosition() const noexcept
 // - true if the cursor is set to the visible state, regardless of blink state
 bool RenderData::IsCursorVisible() const noexcept
 {
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    const auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
     const auto& cursor = gci.GetActiveOutputBuffer().GetTextBuffer().GetCursor();
-    return cursor.IsVisible() && !cursor.IsPopupShown();
+    return cursor.IsVisible();
 }
 
 // Method Description:
@@ -151,7 +134,7 @@ bool RenderData::IsCursorVisible() const noexcept
 // - true if the cursor is currently visually visible, depending upon blink state
 bool RenderData::IsCursorOn() const noexcept
 {
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    const auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
     const auto& cursor = gci.GetActiveOutputBuffer().GetTextBuffer().GetCursor();
     return cursor.IsVisible() && cursor.IsOn();
 }
@@ -165,10 +148,10 @@ bool RenderData::IsCursorOn() const noexcept
 // - height of the cursor, out of 100
 ULONG RenderData::GetCursorHeight() const noexcept
 {
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    const auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
     const auto& cursor = gci.GetActiveOutputBuffer().GetTextBuffer().GetCursor();
     // Determine cursor height
-    ULONG ulHeight = cursor.GetSize();
+    auto ulHeight = cursor.GetSize();
 
     // Now adjust the height for the overwrite/insert mode. If we're in overwrite mode, IsDouble will be set.
     // When IsDouble is set, we either need to double the height of the cursor, or if it's already too big,
@@ -197,7 +180,7 @@ ULONG RenderData::GetCursorHeight() const noexcept
 // - the CursorType of the cursor.
 CursorType RenderData::GetCursorStyle() const noexcept
 {
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    const auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
     const auto& cursor = gci.GetActiveOutputBuffer().GetTextBuffer().GetCursor();
     return cursor.GetType();
 }
@@ -215,61 +198,6 @@ ULONG RenderData::GetCursorPixelWidth() const noexcept
 }
 
 // Method Description:
-// - Get the color of the cursor. If the color is INVALID_COLOR, the cursor
-//      should be drawn by inverting the color of the cursor.
-// Arguments:
-// - <none>
-// Return Value:
-// - the color of the cursor.
-COLORREF RenderData::GetCursorColor() const noexcept
-{
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
-    const auto& cursor = gci.GetActiveOutputBuffer().GetTextBuffer().GetCursor();
-    return cursor.GetColor();
-}
-
-// Routine Description:
-// - Retrieves overlays to be drawn on top of the main screen buffer area.
-// - Overlays are drawn from first to last
-//  (the highest overlay should be given last)
-// Return Value:
-// - Iterable set of overlays
-const std::vector<Microsoft::Console::Render::RenderOverlay> RenderData::GetOverlays() const noexcept
-{
-    std::vector<Microsoft::Console::Render::RenderOverlay> overlays;
-
-    try
-    {
-        // First retrieve the IME information and build overlays.
-        const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
-        const auto& ime = gci.ConsoleIme;
-
-        for (const auto& composition : ime.ConvAreaCompStr)
-        {
-            // Only send the overlay to the renderer on request if it's not supposed to be hidden at this moment.
-            if (!composition.IsHidden())
-            {
-                // This is holding the data.
-                const auto& textBuffer = composition.GetTextBuffer();
-
-                // The origin of the text buffer above (top left corner) is supposed to sit at this
-                // point within the visible viewport of the current window.
-                const auto origin = composition.GetAreaBufferInfo().coordConView;
-
-                // This is the area of the viewport that is actually in use relative to the text buffer itself.
-                // (e.g. 0,0 is the origin of the text buffer above, not the placement within the visible viewport)
-                const auto used = Viewport::FromInclusive(composition.GetAreaBufferInfo().rcViewCaWindow);
-
-                overlays.emplace_back(Microsoft::Console::Render::RenderOverlay{ textBuffer, origin, used });
-            }
-        }
-    }
-    CATCH_LOG();
-
-    return overlays;
-}
-
-// Method Description:
 // - Returns true if the cursor should be drawn twice as wide as usual because
 //      the cursor is currently over a cell with a double-wide character in it.
 // Arguments:
@@ -278,7 +206,7 @@ const std::vector<Microsoft::Console::Render::RenderOverlay> RenderData::GetOver
 // - true if the cursor should be drawn twice as wide as usual
 bool RenderData::IsCursorDoubleWidth() const
 {
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    const auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
     return gci.GetActiveOutputBuffer().CursorIsDoubleWidth();
 }
 
@@ -290,27 +218,21 @@ bool RenderData::IsCursorDoubleWidth() const
 // - If false, it should be ignored and never drawn
 const bool RenderData::IsGridLineDrawingAllowed() noexcept
 {
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
-    // If virtual terminal output is set, grid line drawing is a must. It is always allowed.
-    if (WI_IsFlagSet(gci.GetActiveOutputBuffer().OutputMode, ENABLE_VIRTUAL_TERMINAL_PROCESSING))
+    const auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    const auto outputMode = gci.GetActiveOutputBuffer().OutputMode;
+    // If virtual terminal output is set, grid line drawing is a must. It is also enabled
+    // if someone explicitly asked for worldwide line drawing.
+    if (WI_IsAnyFlagSet(outputMode, ENABLE_VIRTUAL_TERMINAL_PROCESSING | ENABLE_LVB_GRID_WORLDWIDE))
     {
         return true;
     }
     else
     {
-        // If someone explicitly asked for worldwide line drawing, enable it.
-        if (gci.IsGridRenderingAllowedWorldwide())
-        {
-            return true;
-        }
-        else
-        {
-            // Otherwise, for compatibility reasons with legacy applications that used the additional CHAR_INFO bits by accident or for their own purposes,
-            // we must enable grid line drawing only in a DBCS output codepage. (Line drawing historically only worked in DBCS codepages.)
-            // The only known instance of this is Image for Windows by TeraByte, Inc. (TeraByte Unlimited) which used the bits accidentally and for no purpose
-            //   (according to the app developer) in conjunction with the Borland Turbo C cgscrn library.
-            return !!IsAvailableEastAsianCodePage(gci.OutputCP);
-        }
+        // Otherwise, for compatibility reasons with legacy applications that used the additional CHAR_INFO bits by accident or for their own purposes,
+        // we must enable grid line drawing only in a DBCS output codepage. (Line drawing historically only worked in DBCS codepages.)
+        // The only known instance of this is Image for Windows by TeraByte, Inc. (TeraByte Unlimited) which used the bits accidentally and for no purpose
+        //   (according to the app developer) in conjunction with the Borland Turbo C cgscrn library.
+        return !!IsAvailableEastAsianCodePage(gci.OutputCP);
     }
 }
 
@@ -320,7 +242,7 @@ const bool RenderData::IsGridLineDrawingAllowed() noexcept
 // - String with title information
 const std::wstring_view RenderData::GetConsoleTitle() const noexcept
 {
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    const auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
     return gci.GetTitleAndPrefix();
 }
 
@@ -330,9 +252,9 @@ const std::wstring_view RenderData::GetConsoleTitle() const noexcept
 // - The hyperlink ID
 // Return Value:
 // - The URI
-const std::wstring RenderData::GetHyperlinkUri(uint16_t id) const noexcept
+const std::wstring RenderData::GetHyperlinkUri(uint16_t id) const
 {
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    const auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
     return gci.GetActiveOutputBuffer().GetTextBuffer().GetHyperlinkUriFromId(id);
 }
 
@@ -342,14 +264,14 @@ const std::wstring RenderData::GetHyperlinkUri(uint16_t id) const noexcept
 // - The hyperlink ID
 // Return Value:
 // - The custom ID if there was one, empty string otherwise
-const std::wstring RenderData::GetHyperlinkCustomId(uint16_t id) const noexcept
+const std::wstring RenderData::GetHyperlinkCustomId(uint16_t id) const
 {
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
+    const auto& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
     return gci.GetActiveOutputBuffer().GetTextBuffer().GetCustomIdFromId(id);
 }
 
 // For now, we ignore regex patterns in conhost
-const std::vector<size_t> RenderData::GetPatternId(const COORD /*location*/) const noexcept
+const std::vector<size_t> RenderData::GetPatternId(const til::point /*location*/) const
 {
     return {};
 }
@@ -361,12 +283,10 @@ const std::vector<size_t> RenderData::GetPatternId(const COORD /*location*/) con
 // - ARGB color values for the foreground and background
 std::pair<COLORREF, COLORREF> RenderData::GetAttributeColors(const TextAttribute& attr) const noexcept
 {
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
-    return gci.LookupAttributeColors(attr);
+    const auto& renderSettings = ServiceLocator::LocateGlobals().getConsoleInformation().GetRenderSettings();
+    return renderSettings.GetAttributeColors(attr);
 }
-#pragma endregion
 
-#pragma region IUiaData
 // Routine Description:
 // - Determines whether the selection area is empty.
 // Arguments:
@@ -402,9 +322,14 @@ void RenderData::ClearSelection()
 // - coordEnd - Position to select up to
 // Return Value:
 // - <none>
-void RenderData::SelectNewRegion(const COORD coordStart, const COORD coordEnd)
+void RenderData::SelectNewRegion(const til::point coordStart, const til::point coordEnd)
 {
     Selection::Instance().SelectNewRegion(coordStart, coordEnd);
+}
+
+const til::point_span* RenderData::GetSearchHighlightFocused() const noexcept
+{
+    return nullptr;
 }
 
 // Routine Description:
@@ -413,7 +338,7 @@ void RenderData::SelectNewRegion(const COORD coordStart, const COORD coordEnd)
 // - none
 // Return Value:
 // - current selection anchor
-const COORD RenderData::GetSelectionAnchor() const noexcept
+const til::point RenderData::GetSelectionAnchor() const noexcept
 {
     return Selection::Instance().GetSelectionAnchor();
 }
@@ -424,13 +349,13 @@ const COORD RenderData::GetSelectionAnchor() const noexcept
 // - none
 // Return Value:
 // - current selection anchor
-const COORD RenderData::GetSelectionEnd() const noexcept
+const til::point RenderData::GetSelectionEnd() const noexcept
 {
     // The selection area in ConHost is encoded as two things...
     //  - SelectionAnchor: the initial position where the selection was started
     //  - SelectionRect: the rectangular region denoting a portion of the buffer that is selected
 
-    // The following is an excerpt from Selection::s_GetSelectionRects
+    // The following is an excerpt from Selection::GetSelectionSpans
     // if the anchor (start of select) was in the top right or bottom left of the box,
     // we need to remove rectangular overlap in the middle.
     // e.g.
@@ -451,34 +376,8 @@ const COORD RenderData::GetSelectionEnd() const noexcept
     // Then choose the opposite corner.
     const auto anchor = Selection::Instance().GetSelectionAnchor();
 
-    const short x_pos = (selectionRect.Left == anchor.X) ? selectionRect.Right : selectionRect.Left;
-    const short y_pos = (selectionRect.Top == anchor.Y) ? selectionRect.Bottom : selectionRect.Top;
+    const auto x_pos = (selectionRect.left == anchor.x) ? selectionRect.right : selectionRect.left;
+    const auto y_pos = (selectionRect.top == anchor.y) ? selectionRect.bottom : selectionRect.top;
 
     return { x_pos, y_pos };
 }
-
-// Routine Description:
-// - Given two points in the buffer space, color the selection between the two with the given attribute.
-// - This will create an internal selection rectangle covering the two points, assume a line selection,
-//   and use the first point as the anchor for the selection (as if the mouse click started at that point)
-// Arguments:
-// - coordSelectionStart - Anchor point (start of selection) for the region to be colored
-// - coordSelectionEnd - Other point referencing the rectangle inscribing the selection area
-// - attr - Color to apply to region.
-void RenderData::ColorSelection(const COORD coordSelectionStart, const COORD coordSelectionEnd, const TextAttribute attr)
-{
-    Selection::Instance().ColorSelection(coordSelectionStart, coordSelectionEnd, attr);
-}
-
-// Method Description:
-// - Returns true if the screen is globally inverted
-// Arguments:
-// - <none>
-// Return Value:
-// - true if the screen is globally inverted
-bool RenderData::IsScreenReversed() const noexcept
-{
-    const CONSOLE_INFORMATION& gci = ServiceLocator::LocateGlobals().getConsoleInformation();
-    return gci.IsScreenReversed();
-}
-#pragma endregion

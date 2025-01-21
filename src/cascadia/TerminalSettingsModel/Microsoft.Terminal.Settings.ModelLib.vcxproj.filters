@@ -18,6 +18,9 @@
     <ClCompile Include="WslDistroGenerator.cpp">
       <Filter>profileGeneration</Filter>
     </ClCompile>
+    <ClCompile Include="SshHostGenerator.cpp">
+      <Filter>profileGeneration</Filter>
+    </ClCompile>
     <ClCompile Include="CascadiaSettings.cpp" />
     <ClCompile Include="CascadiaSettingsSerialization.cpp" />
     <ClCompile Include="GlobalAppSettings.cpp" />
@@ -27,11 +30,7 @@
     <ClCompile Include="DynamicProfileUtils.cpp">
       <Filter>profileGeneration</Filter>
     </ClCompile>
-    <ClCompile Include="$(OpenConsoleDir)\dep\jsoncpp\jsoncpp.cpp">
-      <Filter>json</Filter>
-    </ClCompile>
     <ClCompile Include="init.cpp" />
-    <ClCompile Include="IconPathConverter.cpp" />
     <ClCompile Include="DefaultTerminal.cpp" />
     <ClCompile Include="FileUtils.cpp" />
     <ClCompile Include="VisualStudioGenerator.cpp">
@@ -44,9 +43,6 @@
       <Filter>profileGeneration</Filter>
     </ClCompile>
     <ClCompile Include="VsSetupConfiguration.cpp">
-      <Filter>profileGeneration</Filter>
-    </ClCompile>
-    <ClCompile Include="VcDevCmdGenerator.cpp">
       <Filter>profileGeneration</Filter>
     </ClCompile>
   </ItemGroup>
@@ -64,6 +60,9 @@
     <ClInclude Include="WslDistroGenerator.h">
       <Filter>profileGeneration</Filter>
     </ClInclude>
+    <ClInclude Include="SshHostGenerator.h">
+      <Filter>profileGeneration</Filter>
+    </ClInclude>
     <ClInclude Include="CascadiaSettings.h" />
     <ClInclude Include="GlobalAppSettings.h" />
     <ClInclude Include="TerminalSettingsSerializationHelpers.h" />
@@ -79,7 +78,7 @@
       <Filter>json</Filter>
     </ClInclude>
     <ClInclude Include="IInheritable.h" />
-    <ClInclude Include="IconPathConverter.h" />
+    <ClInclude Include="MTSMSettings.h" />
     <ClInclude Include="DefaultTerminal.h" />
     <ClInclude Include="FileUtils.h" />
     <ClInclude Include="HashUtils.h" />
@@ -95,9 +94,8 @@
     <ClInclude Include="VsSetupConfiguration.h">
       <Filter>profileGeneration</Filter>
     </ClInclude>
-    <ClInclude Include="VcDevCmdGenerator.h">
-      <Filter>profileGeneration</Filter>
-    </ClInclude>
+    <ClInclude Include="ActionArgsMagic.h" />
+    <ClInclude Include="NewTabMenuEntry.h" />
   </ItemGroup>
   <ItemGroup>
     <Midl Include="ActionArgs.idl" />
@@ -110,13 +108,13 @@
     <Midl Include="CascadiaSettings.idl" />
     <Midl Include="KeyChordSerialization.idl" />
     <Midl Include="EnumMappings.idl" />
-    <Midl Include="IconPathConverter.idl" />
     <Midl Include="TerminalSettings.idl" />
     <Midl Include="AppearanceConfig.idl" />
     <Midl Include="IAppearanceConfig.idl" />
     <Midl Include="FontConfig.idl" />
     <Midl Include="DefaultTerminal.idl" />
     <Midl Include="ApplicationState.idl" />
+    <Midl Include="NewTabMenuEntry.idl" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

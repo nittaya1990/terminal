@@ -12,8 +12,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 {
     DependencyProperty SettingContainer::_HeaderProperty{ nullptr };
     DependencyProperty SettingContainer::_HelpTextProperty{ nullptr };
+    DependencyProperty SettingContainer::_FontIconGlyphProperty{ nullptr };
+    DependencyProperty SettingContainer::_CurrentValueProperty{ nullptr };
+    DependencyProperty SettingContainer::_CurrentValueTemplateProperty{ nullptr };
     DependencyProperty SettingContainer::_HasSettingValueProperty{ nullptr };
     DependencyProperty SettingContainer::_SettingOverrideSourceProperty{ nullptr };
+    DependencyProperty SettingContainer::_StartExpandedProperty{ nullptr };
 
     SettingContainer::SettingContainer()
     {
@@ -43,6 +47,33 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                     xaml_typename<Editor::SettingContainer>(),
                     PropertyMetadata{ box_value(L"") });
         }
+        if (!_FontIconGlyphProperty)
+        {
+            _FontIconGlyphProperty =
+                DependencyProperty::Register(
+                    L"FontIconGlyph",
+                    xaml_typename<hstring>(),
+                    xaml_typename<Editor::SettingContainer>(),
+                    PropertyMetadata{ box_value(L"") });
+        }
+        if (!_CurrentValueProperty)
+        {
+            _CurrentValueProperty =
+                DependencyProperty::Register(
+                    L"CurrentValue",
+                    xaml_typename<IInspectable>(),
+                    xaml_typename<Editor::SettingContainer>(),
+                    PropertyMetadata{ nullptr });
+        }
+        if (!_CurrentValueTemplateProperty)
+        {
+            _CurrentValueTemplateProperty =
+                DependencyProperty::Register(
+                    L"CurrentValueTemplate",
+                    xaml_typename<Windows::UI::Xaml::DataTemplate>(),
+                    xaml_typename<Editor::SettingContainer>(),
+                    PropertyMetadata{ nullptr });
+        }
         if (!_HasSettingValueProperty)
         {
             _HasSettingValueProperty =
@@ -61,9 +92,18 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                     xaml_typename<Editor::SettingContainer>(),
                     PropertyMetadata{ nullptr, PropertyChangedCallback{ &SettingContainer::_OnHasSettingValueChanged } });
         }
+        if (!_StartExpandedProperty)
+        {
+            _StartExpandedProperty =
+                DependencyProperty::Register(
+                    L"StartExpanded",
+                    xaml_typename<bool>(),
+                    xaml_typename<Editor::SettingContainer>(),
+                    PropertyMetadata{ box_value(false) });
+        }
     }
 
-    void SettingContainer::_OnHasSettingValueChanged(DependencyObject const& d, DependencyPropertyChangedEventArgs const& /*args*/)
+    void SettingContainer::_OnHasSettingValueChanged(const DependencyObject& d, const DependencyPropertyChangedEventArgs& /*args*/)
     {
         // update visibility for override message and reset button
         const auto& obj{ d.try_as<Editor::SettingContainer>() };
@@ -80,7 +120,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 // When clicked, we dispatch the bound ClearSettingValue event,
                 // resulting in inheriting the setting value from the parent.
                 button.Click([=](auto&&, auto&&) {
-                    _ClearSettingValueHandlers(*this, nullptr);
+                    ClearSettingValue.raise(*this, nullptr);
 
                     // move the focus to the child control
                     if (const auto& content{ Content() })
@@ -112,27 +152,66 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         _UpdateOverrideSystem();
 
+        // Get the correct base to apply automation properties to
+        std::vector<DependencyObject> base;
+        base.reserve(2);
+        if (const auto& child{ GetTemplateChild(L"Expander") })
+        {
+            if (const auto& expander{ child.try_as<Microsoft::UI::Xaml::Controls::Expander>() })
+            {
+                base.push_back(child);
+            }
+        }
         if (const auto& content{ Content() })
         {
-            if (const auto& obj{ content.try_as<DependencyObject>() })
+            const auto& panel{ content.try_as<Controls::Panel>() };
+            const auto& obj{ content.try_as<DependencyObject>() };
+            if (!panel && obj)
             {
-                // apply header text as name (automation property)
-                if (const auto& header{ Header() })
-                {
-                    const auto headerText{ header.try_as<hstring>() };
-                    if (headerText && !headerText->empty())
-                    {
-                        Automation::AutomationProperties::SetName(obj, *headerText);
-                    }
-                }
+                base.push_back(obj);
+            }
+        }
 
-                // apply help text as tooltip and full description (automation property)
-                const auto& helpText{ HelpText() };
-                if (!helpText.empty())
+        for (const auto& obj : base)
+        {
+            // apply header as name (automation property)
+            if (const auto& header{ Header() })
+            {
+                if (const auto headerText{ header.try_as<hstring>() })
                 {
-                    Controls::ToolTipService::SetToolTip(obj, box_value(helpText));
-                    Automation::AutomationProperties::SetFullDescription(obj, helpText);
+                    Automation::AutomationProperties::SetName(obj, *headerText);
                 }
+            }
+
+            // apply help text as tooltip and full description (automation property)
+            if (const auto& helpText{ HelpText() }; !helpText.empty())
+            {
+                Automation::AutomationProperties::SetFullDescription(obj, helpText);
+            }
+            else
+            {
+                Controls::ToolTipService::SetToolTip(obj, nullptr);
+                Automation::AutomationProperties::SetFullDescription(obj, L"");
+            }
+        }
+
+        const auto textBlockHidden = HelpText().empty();
+        if (const auto& child{ GetTemplateChild(L"HelpTextBlock") })
+        {
+            if (const auto& textBlock{ child.try_as<Controls::TextBlock>() })
+            {
+                textBlock.Visibility(textBlockHidden ? Visibility::Collapsed : Visibility::Visible);
+            }
+        }
+    }
+
+    void SettingContainer::SetExpanded(bool expanded)
+    {
+        if (const auto& child{ GetTemplateChild(L"Expander") })
+        {
+            if (const auto& expander{ child.try_as<Microsoft::UI::Xaml::Controls::Expander>() })
+            {
+                expander.IsExpanded(expanded);
             }
         }
     }
@@ -177,7 +256,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     hstring SettingContainer::_GenerateOverrideMessage(const IInspectable& settingOrigin)
     {
         // We only get here if the user had an override in place.
-        Model::OriginTag originTag{ Model::OriginTag::None };
+        auto originTag{ Model::OriginTag::None };
         winrt::hstring source;
 
         if (const auto& profile{ settingOrigin.try_as<Model::Profile>() })
@@ -192,25 +271,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             originTag = profile.Origin();
         }
 
-        if constexpr (Feature_ShowProfileDefaultsInSettings::IsEnabled())
+        // We will display arrows for all origins, and informative tooltips for Fragments and Generated
+        if (originTag == Model::OriginTag::Fragment || originTag == Model::OriginTag::Generated)
         {
-            // EXPERIMENTAL FEATURE
-            // We will display arrows for all origins, and informative tooltips for Fragments and Generated
-            if (originTag == Model::OriginTag::Fragment || originTag == Model::OriginTag::Generated)
-            {
-                // from a fragment extension or generated profile
-                return hstring{ fmt::format(std::wstring_view{ RS_(L"SettingContainer_OverrideMessageFragmentExtension") }, source) };
-            }
-            return RS_(L"SettingContainer_OverrideMessageBaseLayer");
+            // from a fragment extension or generated profile
+            return hstring{ RS_fmt(L"SettingContainer_OverrideMessageFragmentExtension", source) };
         }
-
-        // STABLE FEATURE
-        // We will only display arrows and informative tooltips for Fragments
-        if (originTag == Model::OriginTag::Fragment)
-        {
-            // from a fragment extension
-            return hstring{ fmt::format(std::wstring_view{ RS_(L"SettingContainer_OverrideMessageFragmentExtension") }, source) };
-        }
-        return {}; // no tooltip
+        return RS_(L"SettingContainer_OverrideMessageBaseLayer");
     }
 }

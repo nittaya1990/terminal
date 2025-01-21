@@ -44,14 +44,12 @@ SOURCES = \
     ..\consoleKeyInfo.cpp \
     ..\find.cpp \
     ..\icon.cpp \
-    ..\InputServices.cpp \
     ..\menu.cpp \
     ..\screenInfoUiaProvider.cpp \
     ..\SystemConfigurationProvider.cpp \
     ..\UiaTextRange.cpp \
     ..\window.cpp \
     ..\windowdpiapi.cpp \
-    ..\windowime.cpp \
     ..\windowio.cpp \
     ..\WindowMetrics.cpp \
     ..\windowproc.cpp \

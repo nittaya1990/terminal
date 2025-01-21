@@ -48,9 +48,6 @@
     <ClCompile Include="..\Window.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\WindowIme.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\WindowDpiApi.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -61,9 +58,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\WindowProc.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\InputServices.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\windowUiaProvider.cpp">
@@ -113,9 +107,6 @@
     <ClInclude Include="..\Window.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\WindowIme.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\WindowDpiApi.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -123,9 +114,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\WindowMetrics.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\InputServices.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\windowUiaProvider.hpp">

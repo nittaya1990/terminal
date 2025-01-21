@@ -21,24 +21,30 @@ static constexpr std::string_view BackgroundKey{ "background" };
 static constexpr std::string_view SelectionBackgroundKey{ "selectionBackground" };
 static constexpr std::string_view CursorColorKey{ "cursorColor" };
 
-static constexpr std::array<std::string_view, 16> TableColors = {
-    "black",
-    "red",
-    "green",
-    "yellow",
-    "blue",
-    "purple",
-    "cyan",
-    "white",
-    "brightBlack",
-    "brightRed",
-    "brightGreen",
-    "brightYellow",
-    "brightBlue",
-    "brightPurple",
-    "brightCyan",
-    "brightWhite"
-};
+static constexpr size_t ColorSchemeExpectedSize = 16;
+static constexpr std::array<std::pair<std::string_view, size_t>, 18> TableColorsMapping{ {
+    // Primary color mappings
+    { "black", 0 },
+    { "red", 1 },
+    { "green", 2 },
+    { "yellow", 3 },
+    { "blue", 4 },
+    { "purple", 5 },
+    { "cyan", 6 },
+    { "white", 7 },
+    { "brightBlack", 8 },
+    { "brightRed", 9 },
+    { "brightGreen", 10 },
+    { "brightYellow", 11 },
+    { "brightBlue", 12 },
+    { "brightPurple", 13 },
+    { "brightCyan", 14 },
+    { "brightWhite", 15 },
+
+    // Alternate color mappings (GH#11456)
+    { "magenta", 5 },
+    { "brightMagenta", 13 },
+} };
 
 ColorScheme::ColorScheme() noexcept :
     ColorScheme{ winrt::hstring{} }
@@ -46,7 +52,8 @@ ColorScheme::ColorScheme() noexcept :
 }
 
 ColorScheme::ColorScheme(const winrt::hstring& name) noexcept :
-    _Name{ name }
+    _Name{ name },
+    _Origin{ OriginTag::User }
 {
     const auto table = Utils::CampbellColorTable();
     std::copy_n(table.data(), table.size(), _table.data());
@@ -61,6 +68,7 @@ winrt::com_ptr<ColorScheme> ColorScheme::Copy() const
     scheme->_SelectionBackground = _SelectionBackground;
     scheme->_CursorColor = _CursorColor;
     scheme->_table = _table;
+    scheme->_Origin = _Origin;
     return scheme;
 }
 
@@ -98,10 +106,17 @@ bool ColorScheme::_layerJson(const Json::Value& json)
     JsonUtils::GetValueForKey(json, CursorColorKey, _CursorColor);
 
     // Required fields
-    for (unsigned int i = 0; i < TableColors.size(); ++i)
+    size_t colorCount = 0;
+    for (const auto& [key, index] : TableColorsMapping)
     {
-        isValid &= JsonUtils::GetValueForKey(json, til::at(TableColors, i), til::at(_table, i));
+        colorCount += JsonUtils::GetValueForKey(json, key, til::at(_table, index));
+        if (colorCount == ColorSchemeExpectedSize)
+        {
+            break;
+        }
     }
+
+    isValid &= (colorCount == 16); // Valid schemes should have exactly 16 colors
 
     return isValid;
 }
@@ -122,9 +137,10 @@ Json::Value ColorScheme::ToJson() const
     JsonUtils::SetValueForKey(json, SelectionBackgroundKey, _SelectionBackground);
     JsonUtils::SetValueForKey(json, CursorColorKey, _CursorColor);
 
-    for (unsigned int i = 0; i < TableColors.size(); ++i)
+    for (size_t i = 0; i < ColorSchemeExpectedSize; ++i)
     {
-        JsonUtils::SetValueForKey(json, til::at(TableColors, i), til::at(_table, i));
+        const auto& key = til::at(TableColorsMapping, i).first;
+        JsonUtils::SetValueForKey(json, key, til::at(_table, i));
     }
 
     return json;
@@ -146,4 +162,39 @@ void ColorScheme::SetColorTableEntry(uint8_t index, const Core::Color& value) no
 {
     THROW_HR_IF(E_INVALIDARG, index >= _table.size());
     _table[index] = value;
+}
+
+winrt::Microsoft::Terminal::Core::Scheme ColorScheme::ToCoreScheme() const noexcept
+{
+    winrt::Microsoft::Terminal::Core::Scheme coreScheme{};
+
+    coreScheme.Foreground = Foreground();
+    coreScheme.Background = Background();
+    coreScheme.CursorColor = CursorColor();
+    coreScheme.SelectionBackground = SelectionBackground();
+    coreScheme.Black = Table()[0];
+    coreScheme.Red = Table()[1];
+    coreScheme.Green = Table()[2];
+    coreScheme.Yellow = Table()[3];
+    coreScheme.Blue = Table()[4];
+    coreScheme.Purple = Table()[5];
+    coreScheme.Cyan = Table()[6];
+    coreScheme.White = Table()[7];
+    coreScheme.BrightBlack = Table()[8];
+    coreScheme.BrightRed = Table()[9];
+    coreScheme.BrightGreen = Table()[10];
+    coreScheme.BrightYellow = Table()[11];
+    coreScheme.BrightBlue = Table()[12];
+    coreScheme.BrightPurple = Table()[13];
+    coreScheme.BrightCyan = Table()[14];
+    coreScheme.BrightWhite = Table()[15];
+    return coreScheme;
+}
+
+bool ColorScheme::IsEquivalentForSettingsMergePurposes(const winrt::com_ptr<ColorScheme>& other) noexcept
+{
+    // The caller likely only got here if the names were the same, so skip checking that one.
+    // We do not care about the cursor color or the selection background, as the main reason we are
+    // doing equivalence merging is to replace old, poorly-specified versions of those two properties.
+    return _table == other->_table && _Background == other->_Background && _Foreground == other->_Foreground;
 }

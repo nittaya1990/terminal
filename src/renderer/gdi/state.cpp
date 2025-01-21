@@ -29,7 +29,7 @@ GdiEngine::GdiEngine() :
     _fInvalidRectUsed(false),
     _lastFg(INVALID_COLOR),
     _lastBg(INVALID_COLOR),
-    _lastFontType(FontType::Default),
+    _lastFontType(FontType::Undefined),
     _currentLineTransform(IDENTITY_XFORM),
     _currentLineRendition(LineRendition::SingleWidth),
     _fPaintStarted(false),
@@ -41,9 +41,6 @@ GdiEngine::GdiEngine() :
     _polyWidths{ &_pool }
 {
     ZeroMemory(_pPolyText, sizeof(POLYTEXTW) * s_cPolyTextCache);
-    _rcInvalid = { 0 };
-    _szInvalidScroll = { 0 };
-    _szMemorySurface = { 0 };
 
     _hdcMemoryContext = CreateCompatibleDC(nullptr);
     THROW_HR_IF_NULL(E_FAIL, _hdcMemoryContext);
@@ -122,10 +119,10 @@ GdiEngine::~GdiEngine()
 [[nodiscard]] HRESULT GdiEngine::SetHwnd(const HWND hwnd) noexcept
 {
     // First attempt to get the DC and create an appropriate DC
-    HDC const hdcRealWindow = GetDC(hwnd);
+    const auto hdcRealWindow = GetDC(hwnd);
     RETURN_HR_IF_NULL(E_FAIL, hdcRealWindow);
 
-    HDC const hdcNewMemoryContext = CreateCompatibleDC(hdcRealWindow);
+    const auto hdcNewMemoryContext = CreateCompatibleDC(hdcRealWindow);
     RETURN_HR_IF_NULL(E_FAIL, hdcNewMemoryContext);
 
     // We need the advanced graphics mode in order to set a transform.
@@ -142,15 +139,6 @@ GdiEngine::~GdiEngine()
     _hwndTargetWindow = hwnd;
     _hdcMemoryContext = hdcNewMemoryContext;
 
-    // If we have a font, apply it to the context.
-    if (nullptr != _hfont)
-    {
-        LOG_HR_IF_NULL(E_FAIL, SelectFont(_hdcMemoryContext, _hfont));
-    }
-
-    // Record the fact that the selected font is the default.
-    _lastFontType = FontType::Default;
-
     if (nullptr != hdcRealWindow)
     {
         LOG_HR_IF(E_FAIL, !(ReleaseDC(_hwndTargetWindow, hdcRealWindow)));
@@ -159,7 +147,7 @@ GdiEngine::~GdiEngine()
 #if DBG
     if (_debugWindow != INVALID_HANDLE_VALUE && _debugWindow != nullptr)
     {
-        RECT rc = { 0 };
+        RECT rc{};
         THROW_IF_WIN32_BOOL_FALSE(GetWindowRect(_hwndTargetWindow, &rc));
 
         THROW_IF_WIN32_BOOL_FALSE(SetWindowPos(_debugWindow, nullptr, 0, 0, rc.right - rc.left, rc.bottom - rc.top, SWP_NOMOVE));
@@ -184,7 +172,7 @@ GdiEngine::~GdiEngine()
     // Otherwise, we'll get an "Error: The operation has completed successfully." and there will be another screenshot on the internet making fun of Windows.
     // See: https://msdn.microsoft.com/en-us/library/windows/desktop/ms633591(v=vs.85).aspx
     SetLastError(0);
-    LONG const lResult = SetWindowLongW(hWnd, nIndex, dwNewLong);
+    const auto lResult = SetWindowLongW(hWnd, nIndex, dwNewLong);
     if (0 == lResult)
     {
         RETURN_LAST_ERROR_IF(0 != GetLastError());
@@ -222,12 +210,12 @@ GdiEngine::~GdiEngine()
 // Return Value:
 // - S_OK if successful. S_FALSE if already set. E_FAIL if there was an error.
 [[nodiscard]] HRESULT GdiEngine::PrepareLineTransform(const LineRendition lineRendition,
-                                                      const size_t targetRow,
-                                                      const size_t viewportLeft) noexcept
+                                                      const til::CoordType targetRow,
+                                                      const til::CoordType viewportLeft) noexcept
 {
     XFORM lineTransform = {};
     // The X delta is to account for the horizontal viewport offset.
-    lineTransform.eDx = viewportLeft ? -1.0f * viewportLeft * _GetFontSize().X : 0.0f;
+    lineTransform.eDx = viewportLeft ? -1.0f * viewportLeft * _GetFontSize().width : 0.0f;
     switch (lineRendition)
     {
     case LineRendition::SingleWidth:
@@ -242,14 +230,14 @@ GdiEngine::~GdiEngine()
         lineTransform.eM11 = 2; // double width
         lineTransform.eM22 = 2; // double height
         // The Y delta is to negate the offset caused by the scaled height.
-        lineTransform.eDy = -1.0f * targetRow * _GetFontSize().Y;
+        lineTransform.eDy = -1.0f * targetRow * _GetFontSize().height;
         break;
     case LineRendition::DoubleHeightBottom:
         lineTransform.eM11 = 2; // double width
         lineTransform.eM22 = 2; // double height
         // The Y delta is to negate the offset caused by the scaled height.
         // An extra row is added because we need the bottom half of the line.
-        lineTransform.eDy = -1.0f * (targetRow + 1) * _GetFontSize().Y;
+        lineTransform.eDy = -1.0f * (targetRow + 1) * _GetFontSize().height;
         break;
     }
     // Return early if the new matrix is the same as the current transform.
@@ -268,6 +256,7 @@ GdiEngine::~GdiEngine()
 // - This method will set the GDI brushes in the drawing context (and update the hung-window background color)
 // Arguments:
 // - textAttributes - Text attributes to use for the brush color
+// - renderSettings - The color table and modes required for rendering
 // - pData - The interface to console data structures required for rendering
 // - usingSoftFont - Whether we're rendering characters from a soft font
 // - isSettingDefaultBrushes - Lets us know that the default brushes are being set so we can update the DC background
@@ -275,7 +264,8 @@ GdiEngine::~GdiEngine()
 // Return Value:
 // - S_OK if set successfully or relevant GDI error via HRESULT.
 [[nodiscard]] HRESULT GdiEngine::UpdateDrawingBrushes(const TextAttribute& textAttributes,
-                                                      const gsl::not_null<IRenderData*> pData,
+                                                      const RenderSettings& renderSettings,
+                                                      const gsl::not_null<IRenderData*> /*pData*/,
                                                       const bool usingSoftFont,
                                                       const bool isSettingDefaultBrushes) noexcept
 {
@@ -284,7 +274,7 @@ GdiEngine::~GdiEngine()
     RETURN_HR_IF_NULL(HRESULT_FROM_WIN32(ERROR_INVALID_STATE), _hdcMemoryContext);
 
     // Set the colors for painting text
-    const auto [colorForeground, colorBackground] = pData->GetAttributeColors(textAttributes);
+    const auto [colorForeground, colorBackground] = renderSettings.GetAttributeColors(textAttributes);
 
     if (colorForeground != _lastFg)
     {
@@ -308,7 +298,9 @@ GdiEngine::~GdiEngine()
 
     // If the font type has changed, select an appropriate font variant or soft font.
     const auto usingItalicFont = textAttributes.IsItalic();
-    const auto fontType = usingSoftFont ? FontType::Soft : usingItalicFont ? FontType::Italic : FontType::Default;
+    const auto fontType = usingSoftFont   ? FontType::Soft :
+                          usingItalicFont ? FontType::Italic :
+                                            FontType::Default;
     if (fontType != _lastFontType)
     {
         switch (fontType)
@@ -325,6 +317,7 @@ GdiEngine::~GdiEngine()
             break;
         }
         _lastFontType = fontType;
+        _fontHasWesternScript = FontHasWesternScript(_hdcMemoryContext);
     }
 
     return S_OK;
@@ -346,66 +339,114 @@ GdiEngine::~GdiEngine()
     // Select into DC
     RETURN_HR_IF_NULL(E_FAIL, SelectFont(_hdcMemoryContext, hFont.get()));
 
-    // Record the fact that the selected font is the default.
-    _lastFontType = FontType::Default;
-
     // Save off the font metrics for various other calculations
     RETURN_HR_IF(E_FAIL, !(GetTextMetricsW(_hdcMemoryContext, &_tmFontMetrics)));
 
     // There is no font metric for the grid line width, so we use a small
     // multiple of the font size, which typically rounds to a pixel.
-    const auto fontSize = _tmFontMetrics.tmHeight - _tmFontMetrics.tmInternalLeading;
-    _lineMetrics.gridlineWidth = std::lround(fontSize * 0.025);
+    const auto cellHeight = static_cast<float>(Font.GetSize().height);
+    const auto fontSize = static_cast<float>(_tmFontMetrics.tmHeight - _tmFontMetrics.tmInternalLeading);
+    const auto baseline = static_cast<float>(_tmFontMetrics.tmAscent);
+    float idealGridlineWidth = std::max(1.0f, fontSize * 0.025f);
+    float idealUnderlineTop = 0;
+    float idealUnderlineWidth = 0;
+    float idealStrikethroughTop = 0;
+    float idealStrikethroughWidth = 0;
 
     OUTLINETEXTMETRICW outlineMetrics;
     if (GetOutlineTextMetricsW(_hdcMemoryContext, sizeof(outlineMetrics), &outlineMetrics))
     {
         // For TrueType fonts, the other line metrics can be obtained from
         // the font's outline text metric structure.
-        _lineMetrics.underlineOffset = outlineMetrics.otmsUnderscorePosition;
-        _lineMetrics.underlineWidth = outlineMetrics.otmsUnderscoreSize;
-        _lineMetrics.strikethroughOffset = outlineMetrics.otmsStrikeoutPosition;
-        _lineMetrics.strikethroughWidth = outlineMetrics.otmsStrikeoutSize;
+        idealUnderlineTop = static_cast<float>(baseline - outlineMetrics.otmsUnderscorePosition);
+        idealUnderlineWidth = static_cast<float>(outlineMetrics.otmsUnderscoreSize);
+        idealStrikethroughWidth = static_cast<float>(outlineMetrics.otmsStrikeoutSize);
+        idealStrikethroughTop = static_cast<float>(baseline - outlineMetrics.otmsStrikeoutPosition);
     }
     else
     {
-        // If we can't obtain the outline metrics for the font, we just pick
-        // some reasonable values for the offsets and widths.
-        _lineMetrics.underlineOffset = -std::lround(fontSize * 0.05);
-        _lineMetrics.underlineWidth = _lineMetrics.gridlineWidth;
-        _lineMetrics.strikethroughOffset = std::lround(_tmFontMetrics.tmAscent / 3.0);
-        _lineMetrics.strikethroughWidth = _lineMetrics.gridlineWidth;
+        // If we can't obtain the outline metrics for the font, we just pick some reasonable values for the offsets and widths.
+        idealUnderlineTop = std::max(1.0f, roundf(baseline - fontSize * 0.05f));
+        idealUnderlineWidth = idealGridlineWidth;
+        idealStrikethroughTop = std::max(1.0f, roundf(baseline * (2.0f / 3.0f)));
+        idealStrikethroughWidth = idealGridlineWidth;
     }
 
-    // We always want the lines to be visible, so if a stroke width ends
-    // up being zero, we need to make it at least 1 pixel.
-    _lineMetrics.gridlineWidth = std::max(_lineMetrics.gridlineWidth, 1);
-    _lineMetrics.underlineWidth = std::max(_lineMetrics.underlineWidth, 1);
-    _lineMetrics.strikethroughWidth = std::max(_lineMetrics.strikethroughWidth, 1);
+    // GdiEngine::PaintBufferGridLines paints underlines using HPEN and LineTo, etc., which draws lines centered on the given coordinates.
+    // This means we need to shift the limit (cellHeight - underlineWidth) and offset (idealUnderlineTop) by half the width.
+    const auto underlineWidth = std::max(1.0f, roundf(idealUnderlineWidth));
+    const auto underlineCenter = std::min(floorf(cellHeight - underlineWidth / 2.0f), roundf(idealUnderlineTop + underlineWidth / 2.0f));
 
-    // Offsets are relative to the base line of the font, so we subtract
-    // from the ascent to get an offset relative to the top of the cell.
-    const auto ascent = _tmFontMetrics.tmAscent;
-    _lineMetrics.underlineOffset = ascent - _lineMetrics.underlineOffset;
-    _lineMetrics.strikethroughOffset = ascent - _lineMetrics.strikethroughOffset;
+    const auto strikethroughWidth = std::max(1.0f, roundf(idealStrikethroughWidth));
+    const auto strikethroughOffset = std::min(cellHeight - strikethroughWidth, roundf(idealStrikethroughTop));
 
-    // For double underlines we need a second offset, just below the first,
-    // but with a bit of a gap (about double the grid line width).
-    _lineMetrics.underlineOffset2 = _lineMetrics.underlineOffset +
-                                    _lineMetrics.underlineWidth +
-                                    std::lround(fontSize * 0.05);
+    // For double underlines we loosely follow what Word does:
+    // 1. The lines are half the width of an underline
+    // 2. Ideally the bottom line is aligned with the bottom of the underline
+    // 3. The top underline is vertically in the middle between baseline and ideal bottom underline
+    // 4. If the top line gets too close to the baseline the underlines are shifted downwards
+    // 5. The minimum gap between the two lines appears to be similar to Tex (1.2pt)
+    // (Additional notes below.)
 
-    // However, we don't want the underline to extend past the bottom of the
-    // cell, so we clamp the offset to fit just inside.
-    const auto maxUnderlineOffset = Font.GetSize().Y - _lineMetrics.underlineWidth;
-    _lineMetrics.underlineOffset2 = std::min(_lineMetrics.underlineOffset2, maxUnderlineOffset);
+    // 1.
+    const auto doubleUnderlineWidth = std::max(1.0f, roundf(idealUnderlineWidth / 2.0f));
+    // 2.
+    auto doubleUnderlinePosBottom = underlineCenter + underlineWidth - doubleUnderlineWidth;
+    // 3. Since we don't align the center of our two lines, but rather the top borders
+    //    we need to subtract half a line width from our center point.
+    auto doubleUnderlinePosTop = roundf((baseline + doubleUnderlinePosBottom - doubleUnderlineWidth) / 2.0f);
+    // 4.
+    doubleUnderlinePosTop = std::max(doubleUnderlinePosTop, baseline + doubleUnderlineWidth);
+    // 5. The gap is only the distance _between_ the lines, but we need the distance from the
+    //    top border of the top and bottom lines, which includes an additional line width.
+    const auto doubleUnderlineGap = std::max(1.0f, roundf(1.2f / 72.0f * _iCurrentDpi));
+    doubleUnderlinePosBottom = std::max(doubleUnderlinePosBottom, doubleUnderlinePosTop + doubleUnderlineGap + doubleUnderlineWidth);
+    // Our cells can't overlap each other so we additionally clamp the bottom line to be inside the cell boundaries.
+    doubleUnderlinePosBottom = std::min(doubleUnderlinePosBottom, cellHeight - doubleUnderlineWidth);
 
-    // But if the resulting gap isn't big enough even to register as a thicker
-    // line, it's better to place the second line slightly above the first.
-    if (_lineMetrics.underlineOffset2 < _lineMetrics.underlineOffset + _lineMetrics.gridlineWidth)
-    {
-        _lineMetrics.underlineOffset2 = _lineMetrics.underlineOffset - _lineMetrics.gridlineWidth;
-    }
+    // The wave line is drawn using a cubic Bézier curve (PolyBezier), because that happens to be cheap with GDI.
+    // We use a Bézier curve where, if the start (a) and end (c) points are at (0,0) and (1,0), the control points are
+    // at (0.5,0.5) (b) and (0.5,-0.5) (d) respectively. Like this but a/b/c/d are square and the lines are round:
+    //
+    //       b
+    //
+    //     ^
+    //    / \                here's some text so the compiler ignores the trailing \ character
+    //   a   \   c
+    //        \ /
+    //         v
+    //
+    //       d
+    //
+    // If you punch x=0.25 into the cubic bezier formula you get y=0.140625. This constant is
+    // important to us because it (plus the line width) tells us the amplitude of the wave.
+    //
+    // We can use the inverse of the constant to figure out how many px one period of the wave has to be to end up being 1px tall.
+    // In our case we want the amplitude of the wave to have a peak-to-peak amplitude that matches our double-underline.
+    const auto doubleUnderlineHalfDistance = 0.5f * (doubleUnderlinePosBottom - doubleUnderlinePosTop);
+    const auto doubleUnderlineCenter = doubleUnderlinePosTop + doubleUnderlineHalfDistance;
+    const auto curlyLineIdealAmplitude = std::max(1.0f, doubleUnderlineHalfDistance);
+    // Since GDI can't deal with fractional pixels, we first calculate the control point offsets (0.5 and -0.5) by multiplying by 0.5 and
+    // then undo that by multiplying by 2.0 for the period. This ensures that our control points can be at curlyLinePeriod/2, an integer.
+    const auto curlyLineControlPointOffset = roundf(curlyLineIdealAmplitude * (1.0f / 0.140625f) * 0.5f);
+    const auto curlyLinePeriod = curlyLineControlPointOffset * 2.0f;
+    // We can reverse the above to get back the actual amplitude of our Bézier curve. The line
+    // will be drawn with a width of doubleUnderlineWidth in the center of the curve (= 0.5x padding).
+    const auto curlyLineAmplitude = 0.140625f * curlyLinePeriod + 0.5f * doubleUnderlineWidth;
+    // To make the wavy line with its double-underline amplitude look consistent with the double-underline we position it at its center.
+    const auto curlyLineOffset = std::min(roundf(doubleUnderlineCenter), floorf(cellHeight - curlyLineAmplitude));
+
+    _lineMetrics.gridlineWidth = lroundf(idealGridlineWidth);
+    _lineMetrics.doubleUnderlineWidth = lroundf(doubleUnderlineWidth);
+    _lineMetrics.underlineCenter = lroundf(underlineCenter);
+    _lineMetrics.underlineWidth = lroundf(underlineWidth);
+    _lineMetrics.doubleUnderlinePosTop = lroundf(doubleUnderlinePosTop);
+    _lineMetrics.doubleUnderlinePosBottom = lroundf(doubleUnderlinePosBottom);
+    _lineMetrics.strikethroughOffset = lroundf(strikethroughOffset);
+    _lineMetrics.strikethroughWidth = lroundf(strikethroughWidth);
+    _lineMetrics.curlyLineCenter = lroundf(curlyLineOffset);
+    _lineMetrics.curlyLinePeriod = lroundf(curlyLinePeriod);
+    _lineMetrics.curlyLineControlPointOffset = lroundf(curlyLineControlPointOffset);
 
     // Now find the size of a 0 in this current font and save it for conversions done later.
     _coordFontLast = Font.GetSize();
@@ -450,11 +491,13 @@ GdiEngine::~GdiEngine()
 // - centeringHint - The horizontal extent that glyphs are offset from center.
 // Return Value:
 // - S_OK if successful. E_FAIL if there was an error.
-[[nodiscard]] HRESULT GdiEngine::UpdateSoftFont(const gsl::span<const uint16_t> bitPattern,
-                                                const SIZE cellSize,
+[[nodiscard]] HRESULT GdiEngine::UpdateSoftFont(const std::span<const uint16_t> bitPattern,
+                                                const til::size cellSize,
                                                 const size_t centeringHint) noexcept
 {
-    // If the soft font is currently selected, replace it with the default font.
+    // If we previously called SelectFont(_hdcMemoryContext, _softFont), it will
+    // still hold a reference to the _softFont object we're planning to overwrite.
+    // --> First revert back to the standard _hfont, lest we have dangling pointers.
     if (_lastFontType == FontType::Soft)
     {
         RETURN_HR_IF_NULL(E_FAIL, SelectFont(_hdcMemoryContext, _hfont));
@@ -462,7 +505,7 @@ GdiEngine::~GdiEngine()
     }
 
     // Create a new font resource with the updated pattern, or delete if empty.
-    _softFont = { bitPattern, cellSize, _GetFontSize(), centeringHint };
+    _softFont = FontResource{ bitPattern, cellSize, _GetFontSize(), centeringHint };
 
     return S_OK;
 }
@@ -486,7 +529,7 @@ GdiEngine::~GdiEngine()
 // - srNewViewport - The bounds of the new viewport.
 // Return Value:
 // - HRESULT S_OK
-[[nodiscard]] HRESULT GdiEngine::UpdateViewport(const SMALL_RECT /*srNewViewport*/) noexcept
+[[nodiscard]] HRESULT GdiEngine::UpdateViewport(const til::inclusive_rect& /*srNewViewport*/) noexcept
 {
     return S_OK;
 }
@@ -544,7 +587,7 @@ GdiEngine::~GdiEngine()
     RETURN_HR_IF_NULL(E_FAIL, hdcTemp.get());
 
     // Get a special engine size because TT fonts can't specify X or we'll get weird scaling under some circumstances.
-    COORD coordFontRequested = FontDesired.GetEngineSize();
+    auto coordFontRequested = FontDesired.GetEngineSize();
 
     // First, check to see if we're asking for the default raster font.
     if (FontDesired.IsDefaultRasterFont())
@@ -574,8 +617,8 @@ GdiEngine::~GdiEngine()
         // attention to the font previews to ensure that the font being selected by GDI is exactly the font requested --
         // some monospace fonts look very similar.
         LOGFONTW lf = { 0 };
-        lf.lfHeight = s_ScaleByDpi(coordFontRequested.Y, iDpi);
-        lf.lfWidth = s_ScaleByDpi(coordFontRequested.X, iDpi);
+        lf.lfHeight = s_ScaleByDpi(coordFontRequested.height, iDpi);
+        lf.lfWidth = s_ScaleByDpi(coordFontRequested.width, iDpi);
         lf.lfWeight = FontDesired.GetWeight();
 
         // If we're searching for Terminal, our supported Raster Font, then we must use OEM_CHARSET.
@@ -610,7 +653,7 @@ GdiEngine::~GdiEngine()
         // NOTE: not using what GDI gave us because some fonts don't quite roundtrip (e.g. MS Gothic and VL Gothic)
         lf.lfPitchAndFamily = (FIXED_PITCH | FF_MODERN);
 
-        RETURN_IF_FAILED(FontDesired.FillLegacyNameBuffer(gsl::make_span(lf.lfFaceName)));
+        FontDesired.FillLegacyNameBuffer(lf.lfFaceName);
 
         // Create font.
         hFont.reset(CreateFontIndirectW(&lf));
@@ -634,9 +677,9 @@ GdiEngine::~GdiEngine()
     SIZE sz;
     RETURN_HR_IF(E_FAIL, !(GetTextExtentPoint32W(hdcTemp.get(), L"0", 1, &sz)));
 
-    COORD coordFont;
-    coordFont.X = static_cast<SHORT>(sz.cx);
-    coordFont.Y = static_cast<SHORT>(sz.cy);
+    til::size coordFont;
+    coordFont.width = sz.cx;
+    coordFont.height = sz.cy;
 
     // The extent point won't necessarily be perfect for the width, so get the ABC metrics for the 0 if possible to improve the measurement.
     // This will fail for non-TrueType fonts and we'll fall back to what GetTextExtentPoint said.
@@ -644,12 +687,12 @@ GdiEngine::~GdiEngine()
         ABC abc;
         if (0 != GetCharABCWidthsW(hdcTemp.get(), '0', '0', &abc))
         {
-            int const abcTotal = abc.abcA + abc.abcB + abc.abcC;
+            const auto abcTotal = abc.abcA + abc.abcB + abc.abcC;
 
             // No negatives or zeros or we'll have bad character-to-pixel math later.
             if (abcTotal > 0)
             {
-                coordFont.X = static_cast<SHORT>(abcTotal);
+                coordFont.width = abcTotal;
             }
         }
     }
@@ -657,7 +700,7 @@ GdiEngine::~GdiEngine()
     // Now fill up the FontInfo we were passed with the full details of which font we actually chose
     {
         // Get the actual font face that we chose
-        const size_t faceNameLength{ gsl::narrow<size_t>(GetTextFaceW(hdcTemp.get(), 0, nullptr)) };
+        const auto faceNameLength{ gsl::narrow<size_t>(GetTextFaceW(hdcTemp.get(), 0, nullptr)) };
 
         std::wstring currentFaceName{};
         currentFaceName.resize(faceNameLength);
@@ -670,9 +713,9 @@ GdiEngine::~GdiEngine()
         {
             coordFontRequested = coordFont;
         }
-        else if (coordFontRequested.X == 0)
+        else if (coordFontRequested.width == 0)
         {
-            coordFontRequested.X = (SHORT)s_ShrinkByDpi(coordFont.X, iDpi);
+            coordFontRequested.width = s_ShrinkByDpi(coordFont.width, iDpi);
         }
 
         Font.SetFromEngine(currentFaceName,
@@ -692,7 +735,7 @@ GdiEngine::~GdiEngine()
 // - pFontSize - receives the current X by Y size of the font.
 // Return Value:
 // - S_OK
-[[nodiscard]] HRESULT GdiEngine::GetFontSize(_Out_ COORD* const pFontSize) noexcept
+[[nodiscard]] HRESULT GdiEngine::GetFontSize(_Out_ til::size* pFontSize) noexcept
 {
     *pFontSize = _GetFontSize();
     return S_OK;
@@ -704,7 +747,7 @@ GdiEngine::~GdiEngine()
 // - <none>
 // Return Value:
 // - X by Y size of the font.
-COORD GdiEngine::_GetFontSize() const
+til::size GdiEngine::_GetFontSize() const
 {
     return _coordFontLast;
 }
